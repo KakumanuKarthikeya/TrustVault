@@ -140,8 +140,33 @@ Deletes the document and its private stored file.
 - **Missing/malformed ID (`404`):** `{"error":"Document not found"}`.
 - **Non-owner (`403`):** `{"error":"Forbidden"}`.
 
-Admin role alone does not bypass document-level checks. This stage does not
-include permission-grant/revoke APIs or persistent audit logging.
+### `PUT /api/documents/:documentId/permissions/:userId`
+
+Creates or changes a document permission for an existing active user. Repeating
+the request updates the existing grant instead of creating a duplicate.
+
+- **Input JSON:** `{"access":"read"}` or `{"access":"edit"}` only.
+- **Authorization:** Document owner only; admin role and existing edit grants
+  do not bypass this rule.
+- **Success (`200`):** `{"permission":{"documentId":"...","userId":"...","access":"read"}}`.
+- **Errors:** `400` malformed user ID, self-grant, invalid permission or extra
+  fields; `401` unauthenticated; `403` non-owner; `404` document or active user
+  not found.
+
+### `DELETE /api/documents/:documentId/permissions/:userId`
+
+Revokes the specified user's document permission.
+
+- **Authorization:** Document owner only.
+- **Success (`204`):** Empty response.
+- **Errors:** `400` malformed user ID; `401` unauthenticated; `403` non-owner;
+  `404` document or permission not found.
+
+Document access middleware checks the current permission record on each
+request. Therefore, after a successful revoke, the next protected read,
+download, or edit request is denied. Deletion of a document remains owner-only.
+Admin role alone does not bypass document-level checks. Persistent audit
+logging is not implemented.
 
 ## Authorization middleware
 

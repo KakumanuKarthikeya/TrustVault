@@ -13,6 +13,18 @@
   connection has not been verified.
 - **Actual commit link:** Not available; this workspace is not a Git repository.
 
+## 2026-10-20 — Document permission grants and revocations
+
+- **Request:** Add owner-only APIs for read/edit grants and permission
+  revocation; validate users and permissions and prove revocation takes effect
+  on subsequent document requests.
+- **What the AI got wrong:** The first test run returned `404` for grant tests
+  because the owner-only middleware correctly requires an existing document.
+  The test fixtures were updated to create that document.
+- **Verification:** `npm test` passed: 7 suites, 40 tests. Permission API tests
+  use mocked persistence; live Atlas behavior has not been verified.
+- **Actual commit link:** Not available; this workspace is not a Git repository.
+
 ## 2026-10-20 — Private document management APIs
 
 - **Request:** Add private document uploads, scoped list/search, metadata,

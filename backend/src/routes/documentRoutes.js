@@ -36,6 +36,16 @@ router.get(
   ...requireDocumentAccess('read'),
   documentController.download,
 );
+router.put(
+  '/:documentId/permissions/:userId',
+  requireDocumentOwner,
+  documentController.grantPermission,
+);
+router.delete(
+  '/:documentId/permissions/:userId',
+  requireDocumentOwner,
+  documentController.revokePermission,
+);
 router.get(
   '/:documentId',
   ...requireDocumentAccess('read'),

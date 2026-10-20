@@ -9,8 +9,10 @@ jest.mock('../models/Document', () => ({
 }));
 
 jest.mock('../models/Permission', () => ({
+  deleteOne: jest.fn(),
   exists: jest.fn(),
   find: jest.fn(),
+  findOneAndUpdate: jest.fn(),
 }));
 
 jest.mock('../services/privateFileStorage', () => ({
@@ -39,6 +41,8 @@ const PDF_BUFFER = Buffer.from('%PDF-1.7\nTrustVault test fixture');
 
 let records;
 let grants;
+let users;
+let permissionRecords;
 let temporaryDirectory;
 let downloadablePath;
 
@@ -83,7 +87,7 @@ function tokenFor(userId) {
 
 function authenticateAs(userId, role = 'owner') {
   User.findById.mockImplementation(async (id) =>
-    id === userId ? makeUser(userId, role) : null,
+    id === userId ? makeUser(userId, role) : users.get(id) || null,
   );
   return `Bearer ${tokenFor(userId)}`;
 }
@@ -133,10 +137,40 @@ function installDocumentMocks() {
     }),
   }));
   Permission.exists.mockResolvedValue(null);
+  Permission.findOneAndUpdate.mockImplementation(async (filter, update) => {
+    let permission = permissionRecords.find(
+      (record) =>
+        record.documentId === filter.documentId &&
+        record.userId === filter.userId,
+    );
+    if (permission) {
+      permission.access = update.$set.access;
+    } else {
+      permission = {
+        documentId: filter.documentId,
+        userId: filter.userId,
+        access: update.$set.access,
+      };
+      permissionRecords.push(permission);
+    }
+    return permission;
+  });
+  Permission.deleteOne.mockImplementation(async (filter) => {
+    const initialLength = permissionRecords.length;
+    permissionRecords = permissionRecords.filter(
+      (record) =>
+        !(
+          record.documentId === filter.documentId &&
+          record.userId === filter.userId
+        ),
+    );
+    return { deletedCount: initialLength - permissionRecords.length };
+  });
   Permission.find.mockReturnValue({
     select: jest.fn().mockReturnThis(),
     lean: jest.fn().mockResolvedValue(grants),
   });
+  User.findById.mockImplementation(async (id) => users.get(id) || null);
   privateFileStorage.storeFile.mockResolvedValue(STORAGE_KEY);
   privateFileStorage.getFilePath.mockResolvedValue(downloadablePath);
   privateFileStorage.removeFile.mockResolvedValue(undefined);
@@ -159,6 +193,8 @@ beforeEach(() => {
   jest.clearAllMocks();
   records = [];
   grants = [];
+  users = new Map();
+  permissionRecords = [];
   installDocumentMocks();
 });
 
@@ -300,7 +336,7 @@ describe('Document API', () => {
     expect(privateFileStorage.removeFile).not.toHaveBeenCalled();
   });
 
-  it('allows a current read grant to download, but not edit metadata', async () => {
+  it('allows a current read grant to download, but not edit or delete', async () => {
     records.push(makeDocument());
     Permission.exists.mockResolvedValue({ _id: 'permission' });
     const authorization = authenticateAs(OTHER_USER_ID, 'viewer');
@@ -312,6 +348,12 @@ describe('Document API', () => {
     expect(download.headers['content-type']).toMatch(/^application\/pdf/);
     expect(download.headers['cache-control']).toBe('private, no-store');
     expect(privateFileStorage.getFilePath).toHaveBeenCalledWith(STORAGE_KEY);
+
+    const deletion = await request(app)
+      .delete(`/api/documents/${DOCUMENT_ID}`)
+      .set('Authorization', authenticateAs(OTHER_USER_ID, 'viewer'));
+    expect(deletion.status).toBe(403);
+    expect(records).toHaveLength(1);
 
     Permission.exists.mockResolvedValue(null);
     const update = await request(app)
@@ -340,6 +382,157 @@ describe('Document API', () => {
       .set('Authorization', authenticateAs(OWNER_ID));
     expect(deletion.status).toBe(204);
     expect(privateFileStorage.removeFile).toHaveBeenCalledWith(STORAGE_KEY);
+  });
+
+  it.each(['read', 'edit'])('allows the owner to grant %s access', async (access) => {
+    const recipient = '64b000000000000000000005';
+    records.push(makeDocument());
+    users.set(recipient, makeUser(recipient, 'viewer'));
+    const response = await request(app)
+      .put(`/api/documents/${DOCUMENT_ID}/permissions/${recipient}`)
+      .set('Authorization', authenticateAs(OWNER_ID))
+      .send({ access });
+
+    expect(response.status).toBe(200);
+    expect(response.body.permission).toEqual({
+      documentId: DOCUMENT_ID,
+      userId: recipient,
+      access,
+    });
+    expect(Permission.findOneAndUpdate).toHaveBeenCalledWith(
+      { documentId: DOCUMENT_ID, userId: recipient },
+      { $set: { access } },
+      expect.objectContaining({ upsert: true, runValidators: true }),
+    );
+  });
+
+  it('updates a duplicate grant rather than creating a duplicate', async () => {
+    const recipient = '64b000000000000000000005';
+    records.push(makeDocument());
+    users.set(recipient, makeUser(recipient, 'viewer'));
+    permissionRecords.push({
+      documentId: DOCUMENT_ID,
+      userId: recipient,
+      access: 'read',
+    });
+
+    const response = await request(app)
+      .put(`/api/documents/${DOCUMENT_ID}/permissions/${recipient}`)
+      .set('Authorization', authenticateAs(OWNER_ID))
+      .send({ access: 'edit' });
+
+    expect(response.status).toBe(200);
+    expect(permissionRecords).toHaveLength(1);
+    expect(permissionRecords[0].access).toBe('edit');
+  });
+
+  it('denies non-owners from granting or revoking access', async () => {
+    records.push(makeDocument());
+    const recipient = '64b000000000000000000005';
+    users.set(recipient, makeUser(recipient, 'viewer'));
+    const authorization = authenticateAs(OTHER_USER_ID, 'viewer');
+
+    const grant = await request(app)
+      .put(`/api/documents/${DOCUMENT_ID}/permissions/${recipient}`)
+      .set('Authorization', authorization)
+      .send({ access: 'read' });
+    const revoke = await request(app)
+      .delete(`/api/documents/${DOCUMENT_ID}/permissions/${recipient}`)
+      .set('Authorization', authenticateAs(OTHER_USER_ID, 'viewer'));
+
+    expect(grant.status).toBe(403);
+    expect(revoke.status).toBe(403);
+    expect(Permission.findOneAndUpdate).not.toHaveBeenCalled();
+    expect(Permission.deleteOne).not.toHaveBeenCalled();
+  });
+
+  it('rejects invalid recipient IDs, unknown users, and invalid permission values', async () => {
+    records.push(makeDocument());
+    const invalidId = await request(app)
+      .put(`/api/documents/${DOCUMENT_ID}/permissions/not-an-id`)
+      .set('Authorization', authenticateAs(OWNER_ID))
+      .send({ access: 'read' });
+
+    const unknownId = '64b000000000000000000099';
+    const unknownUser = await request(app)
+      .put(`/api/documents/${DOCUMENT_ID}/permissions/${unknownId}`)
+      .set('Authorization', authenticateAs(OWNER_ID))
+      .send({ access: 'read' });
+
+    const recipient = '64b000000000000000000005';
+    users.set(recipient, makeUser(recipient, 'viewer'));
+    const invalidPermission = await request(app)
+      .put(`/api/documents/${DOCUMENT_ID}/permissions/${recipient}`)
+      .set('Authorization', authenticateAs(OWNER_ID))
+      .send({ access: 'admin' });
+
+    expect(invalidId.status).toBe(400);
+    expect(invalidId.body).toEqual({ error: 'Invalid user ID' });
+    expect(unknownUser.status).toBe(404);
+    expect(unknownUser.body).toEqual({ error: 'User not found' });
+    expect(invalidPermission.status).toBe(400);
+    expect(invalidPermission.body).toEqual({ error: 'Invalid permission' });
+    expect(Permission.findOneAndUpdate).not.toHaveBeenCalled();
+  });
+
+  it('prevents granting access to the owner themself', async () => {
+    records.push(makeDocument());
+    const response = await request(app)
+      .put(`/api/documents/${DOCUMENT_ID}/permissions/${OWNER_ID}`)
+      .set('Authorization', authenticateAs(OWNER_ID))
+      .send({ access: 'edit' });
+
+    expect(response.status).toBe(400);
+    expect(response.body).toEqual({
+      error: 'Cannot grant access to yourself',
+    });
+    expect(Permission.findOneAndUpdate).not.toHaveBeenCalled();
+  });
+
+  it('revokes a grant and denies the next read, download, update, and delete request', async () => {
+    const recipient = '64b000000000000000000005';
+    records.push(makeDocument());
+    users.set(recipient, makeUser(recipient, 'viewer'));
+    permissionRecords.push({
+      documentId: DOCUMENT_ID,
+      userId: recipient,
+      access: 'edit',
+    });
+    Permission.exists.mockImplementation(async (filter) =>
+      permissionRecords.find(
+        (record) =>
+          record.documentId === filter.documentId &&
+          record.userId === filter.userId &&
+          filter.access.$in.includes(record.access),
+      ) || null,
+    );
+
+    const revoke = await request(app)
+      .delete(`/api/documents/${DOCUMENT_ID}/permissions/${recipient}`)
+      .set('Authorization', authenticateAs(OWNER_ID));
+    expect(revoke.status).toBe(204);
+
+    const authorization = authenticateAs(recipient, 'viewer');
+    const read = await request(app)
+      .get(`/api/documents/${DOCUMENT_ID}`)
+      .set('Authorization', authorization);
+    const download = await request(app)
+      .get(`/api/documents/${DOCUMENT_ID}/download`)
+      .set('Authorization', authenticateAs(recipient, 'viewer'));
+    const update = await request(app)
+      .patch(`/api/documents/${DOCUMENT_ID}`)
+      .set('Authorization', authenticateAs(recipient, 'viewer'))
+      .send({ name: 'Unauthorized change' });
+    const deletion = await request(app)
+      .delete(`/api/documents/${DOCUMENT_ID}`)
+      .set('Authorization', authenticateAs(recipient, 'viewer'));
+
+    expect(read.status).toBe(403);
+    expect(download.status).toBe(403);
+    expect(update.status).toBe(403);
+    expect(deletion.status).toBe(403);
+    expect(privateFileStorage.getFilePath).not.toHaveBeenCalled();
+    expect(records).toHaveLength(1);
   });
 
   it('returns not found for missing documents and rejects owner reassignment', async () => {

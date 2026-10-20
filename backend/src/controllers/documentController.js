@@ -1,7 +1,9 @@
 const fs = require('node:fs');
+const mongoose = require('mongoose');
 const { z } = require('zod');
 const Document = require('../models/Document');
 const Permission = require('../models/Permission');
+const User = require('../models/User');
 const privateFileStorage = require('../services/privateFileStorage');
 const { detectAllowedFile } = require('../utils/uploadValidation');
 
@@ -21,6 +23,11 @@ const updateMetadataSchema = z
   })
   .strict()
   .refine((value) => Object.keys(value).length > 0);
+const permissionSchema = z
+  .object({
+    access: z.enum(['read', 'edit']),
+  })
+  .strict();
 
 function publicDocument(document) {
   return {
@@ -241,11 +248,82 @@ async function remove(request, response, next) {
   }
 }
 
+async function grantPermission(request, response, next) {
+  if (!mongoose.isValidObjectId(request.params.userId)) {
+    return response.status(400).json({ error: 'Invalid user ID' });
+  }
+
+  const input = permissionSchema.safeParse(request.body);
+  if (!input.success) {
+    return response.status(400).json({ error: 'Invalid permission' });
+  }
+
+  if (String(request.params.userId) === String(request.user._id)) {
+    return response.status(400).json({ error: 'Cannot grant access to yourself' });
+  }
+
+  try {
+    const targetUser = await User.findById(request.params.userId);
+    if (!targetUser || targetUser.status !== 'active') {
+      return response.status(404).json({ error: 'User not found' });
+    }
+
+    const permission = await Permission.findOneAndUpdate(
+      {
+        documentId: request.document._id,
+        userId: targetUser._id,
+      },
+      { $set: { access: input.data.access } },
+      {
+        upsert: true,
+        new: true,
+        runValidators: true,
+        setDefaultsOnInsert: true,
+      },
+    );
+
+    // Audit integration point: persist permission grant/change when AuditLog is introduced.
+    return response.status(200).json({
+      permission: {
+        documentId: String(permission.documentId),
+        userId: String(permission.userId),
+        access: permission.access,
+      },
+    });
+  } catch (error) {
+    return next(error);
+  }
+}
+
+async function revokePermission(request, response, next) {
+  if (!mongoose.isValidObjectId(request.params.userId)) {
+    return response.status(400).json({ error: 'Invalid user ID' });
+  }
+
+  try {
+    const result = await Permission.deleteOne({
+      documentId: request.document._id,
+      userId: request.params.userId,
+    });
+
+    if (result.deletedCount === 0) {
+      return response.status(404).json({ error: 'Permission not found' });
+    }
+
+    // Audit integration point: persist permission revocation when AuditLog is introduced.
+    return response.status(204).end();
+  } catch (error) {
+    return next(error);
+  }
+}
+
 module.exports = {
   download,
+  grantPermission,
   getMetadata,
   list,
   remove,
+  revokePermission,
   updateMetadata,
   upload,
 };
