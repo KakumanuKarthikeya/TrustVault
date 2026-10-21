@@ -15,9 +15,15 @@ jest.mock('../models/AuditLog', () => ({
   find: jest.fn(),
 }));
 
+jest.mock('../models/TokenRevocation', () => ({
+  exists: jest.fn(),
+}));
+
 const jwt = require('jsonwebtoken');
+const crypto = require('node:crypto');
 const request = require('supertest');
 const AuditLog = require('../models/AuditLog');
+const TokenRevocation = require('../models/TokenRevocation');
 const User = require('../models/User');
 const app = require('../app');
 
@@ -32,6 +38,7 @@ function tokenFor(userId) {
     issuer: 'trustvault',
     audience: 'trustvault-api',
     expiresIn: '15m',
+    jwtid: crypto.randomBytes(32).toString('hex'),
   });
 }
 
@@ -57,6 +64,7 @@ beforeEach(() => {
     role: id === ADMIN_ID ? 'admin' : 'viewer',
     status: 'active',
   }));
+  TokenRevocation.exists.mockResolvedValue(null);
 });
 
 describe('Audit history API', () => {

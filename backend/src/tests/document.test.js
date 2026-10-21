@@ -19,6 +19,10 @@ jest.mock('../models/AuditLog', () => ({
   create: jest.fn(),
 }));
 
+jest.mock('../models/TokenRevocation', () => ({
+  exists: jest.fn(),
+}));
+
 jest.mock('../services/privateFileStorage', () => ({
   getFilePath: jest.fn(),
   removeFile: jest.fn(),
@@ -26,6 +30,7 @@ jest.mock('../services/privateFileStorage', () => ({
 }));
 
 const fs = require('node:fs/promises');
+const crypto = require('node:crypto');
 const os = require('node:os');
 const path = require('node:path');
 const jwt = require('jsonwebtoken');
@@ -34,6 +39,7 @@ const User = require('../models/User');
 const Document = require('../models/Document');
 const Permission = require('../models/Permission');
 const AuditLog = require('../models/AuditLog');
+const TokenRevocation = require('../models/TokenRevocation');
 const privateFileStorage = require('../services/privateFileStorage');
 const app = require('../app');
 
@@ -87,6 +93,7 @@ function tokenFor(userId) {
     issuer: 'trustvault',
     audience: 'trustvault-api',
     expiresIn: '15m',
+    jwtid: crypto.randomBytes(32).toString('hex'),
   });
 }
 
@@ -177,6 +184,7 @@ function installDocumentMocks() {
   privateFileStorage.getFilePath.mockResolvedValue(downloadablePath);
   privateFileStorage.removeFile.mockResolvedValue(undefined);
   AuditLog.create.mockResolvedValue({});
+  TokenRevocation.exists.mockResolvedValue(null);
 }
 
 beforeAll(async () => {

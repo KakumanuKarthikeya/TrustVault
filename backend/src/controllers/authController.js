@@ -1,7 +1,9 @@
+const crypto = require('node:crypto');
 const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
 const { z } = require('zod');
 const User = require('../models/User');
+const TokenRevocation = require('../models/TokenRevocation');
 const { getJwtSecret } = require('../middleware/authenticate');
 const { recordAuditEvent } = require('../services/auditLog');
 
@@ -50,6 +52,7 @@ function createAccessToken(userId, secret) {
     issuer: 'trustvault',
     audience: 'trustvault-api',
     expiresIn: '15m',
+    jwtid: crypto.randomBytes(32).toString('hex'),
   });
 }
 
@@ -115,9 +118,28 @@ function me(request, response) {
   return response.status(200).json({ user: toPublicUser(request.user) });
 }
 
+async function logout(request, response, next) {
+  try {
+    await TokenRevocation.create({
+      tokenIdHash: request.authToken.tokenIdHash,
+      userId: request.user._id,
+      expiresAt: request.authToken.expiresAt,
+    });
+    await recordAuditEvent({
+      actorUserId: request.user._id,
+      action: 'auth.logout',
+      outcome: 'success',
+    });
+    return response.status(204).end();
+  } catch (error) {
+    return next(error);
+  }
+}
+
 module.exports = {
   login,
   loginSchema,
+  logout,
   me,
   register,
   registerSchema,

@@ -1,5 +1,8 @@
+const crypto = require('node:crypto');
 const jwt = require('jsonwebtoken');
+const mongoose = require('mongoose');
 const User = require('../models/User');
+const TokenRevocation = require('../models/TokenRevocation');
 
 function getJwtSecret() {
   const secret = process.env.JWT_SECRET;
@@ -32,21 +35,51 @@ async function authenticate(request, response, next) {
     return response.status(401).json({ error: 'Authentication required' });
   }
 
-  if (!payload || typeof payload === 'string' || typeof payload.sub !== 'string') {
+  if (
+    !payload ||
+    typeof payload === 'string' ||
+    typeof payload.sub !== 'string' ||
+    !mongoose.isValidObjectId(payload.sub)
+  ) {
+    return response.status(401).json({ error: 'Authentication required' });
+  }
+
+  if (
+    typeof payload.jti !== 'string' ||
+    !/^[a-f0-9]{64}$/.test(payload.jti) ||
+    !Number.isInteger(payload.exp)
+  ) {
     return response.status(401).json({ error: 'Authentication required' });
   }
 
   try {
+    const tokenIdHash = hashTokenId(payload.jti);
+    const revoked = await TokenRevocation.exists({
+      tokenIdHash,
+      expiresAt: { $gt: new Date() },
+    });
+    if (revoked) {
+      return response.status(401).json({ error: 'Authentication required' });
+    }
+
     const user = await User.findById(payload.sub);
     if (!user || user.status !== 'active') {
       return response.status(401).json({ error: 'Authentication required' });
     }
 
     request.user = user;
+    request.authToken = {
+      tokenIdHash,
+      expiresAt: new Date(payload.exp * 1000),
+    };
     return next();
   } catch (error) {
     return next(error);
   }
 }
 
-module.exports = { authenticate, getJwtSecret };
+function hashTokenId(tokenId) {
+  return crypto.createHash('sha256').update(tokenId, 'utf8').digest('hex');
+}
+
+module.exports = { authenticate, getJwtSecret, hashTokenId };

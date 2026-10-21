@@ -64,6 +64,26 @@ Returns the current authenticated account.
 - **Missing, invalid, expired token or disabled account (`401`):** `{"error":"Authentication required"}`.
 - **Signing key unavailable (`503`):** `{"error":"Authentication unavailable"}`.
 
+### `POST /api/auth/logout`
+
+Revokes the access token used for this request.
+
+- **Authentication:** Required; send the access token in the `Authorization`
+  header.
+- **Success (`204`):** Empty response. The same token is rejected by all
+  protected routes after logout succeeds.
+- **Missing, invalid, expired, or previously revoked token (`401`):**
+  `{"error":"Authentication required"}`.
+- **Persistence failure (`500`):** The server does not claim logout succeeded.
+
+Each issued JWT contains a random token identifier. The server persists only a
+SHA-256 hash of that identifier, the user ID, and token expiry in MongoDB. The
+middleware checks the revocation collection on every protected request.
+Expired revocation records are eligible for MongoDB TTL cleanup; token expiry
+is independently enforced by JWT verification. Revocation survives application
+restarts and does not revoke other sessions for the same user. Logout is
+recorded in the audit history without storing the token or identifier.
+
 ## Documents
 
 All document endpoints require `Authorization: Bearer <access-token>`.

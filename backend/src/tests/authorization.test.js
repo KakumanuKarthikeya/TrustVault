@@ -14,6 +14,11 @@ jest.mock('../models/AuditLog', () => ({
   create: jest.fn(),
 }));
 
+jest.mock('../models/TokenRevocation', () => ({
+  exists: jest.fn(),
+}));
+
+const crypto = require('node:crypto');
 const express = require('express');
 const jwt = require('jsonwebtoken');
 const request = require('supertest');
@@ -21,6 +26,7 @@ const User = require('../models/User');
 const Document = require('../models/Document');
 const Permission = require('../models/Permission');
 const AuditLog = require('../models/AuditLog');
+const TokenRevocation = require('../models/TokenRevocation');
 const { authenticate } = require('../middleware/authenticate');
 const authorizeRoles = require('../middleware/authorizeRoles');
 const { createDocumentAccess } = require('../middleware/documentAccess');
@@ -68,6 +74,7 @@ function makeToken(userId, claims = {}) {
     issuer: 'trustvault',
     audience: 'trustvault-api',
     expiresIn: '15m',
+    jwtid: crypto.randomBytes(32).toString('hex'),
   });
 }
 
@@ -95,6 +102,7 @@ beforeEach(() => {
   });
   Permission.exists.mockResolvedValue(null);
   AuditLog.create.mockResolvedValue({});
+  TokenRevocation.exists.mockResolvedValue(null);
 });
 
 describe('Authorization middleware', () => {

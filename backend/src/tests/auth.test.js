@@ -8,19 +8,28 @@ jest.mock('../models/AuditLog', () => ({
   create: jest.fn(),
 }));
 
+jest.mock('../models/TokenRevocation', () => ({
+  create: jest.fn(),
+  exists: jest.fn(),
+}));
+
 const bcrypt = require('bcrypt');
+const crypto = require('node:crypto');
+const jwt = require('jsonwebtoken');
 const request = require('supertest');
 const User = require('../models/User');
 const AuditLog = require('../models/AuditLog');
+const TokenRevocation = require('../models/TokenRevocation');
 const app = require('../app');
 
 const userId = '64b000000000000000000001';
 const testSecret = 'test-only-secret-with-at-least-32-characters';
 let users;
+let revokedTokens;
 
-function makeUser(values) {
+function makeUser(values, id = userId) {
   return {
-    _id: userId,
+    _id: id,
     name: values.name,
     email: values.email.trim().toLowerCase(),
     passwordHash: values.passwordHash,
@@ -31,14 +40,33 @@ function makeUser(values) {
   };
 }
 
+function tokenFor(id) {
+  return jwt.sign({}, testSecret, {
+    algorithm: 'HS256',
+    subject: id,
+    issuer: 'trustvault',
+    audience: 'trustvault-api',
+    expiresIn: '15m',
+    jwtid: crypto.randomBytes(32).toString('hex'),
+  });
+}
+
 beforeAll(() => {
   process.env.JWT_SECRET = testSecret;
 });
 
 beforeEach(() => {
   users = [];
+  revokedTokens = new Map();
   jest.clearAllMocks();
   AuditLog.create.mockResolvedValue({});
+  TokenRevocation.create.mockImplementation(async (record) => {
+    revokedTokens.set(record.tokenIdHash, record.expiresAt);
+    return record;
+  });
+  TokenRevocation.exists.mockImplementation(async ({ tokenIdHash, expiresAt }) =>
+    revokedTokens.get(tokenIdHash) > expiresAt.$gt ? { _id: 'revoked' } : null,
+  );
 
   User.create.mockImplementation(async (values) => {
     if (users.some((user) => user.email === values.email)) {
@@ -192,5 +220,92 @@ describe('Authentication API', () => {
 
     expect(response.status).toBe(401);
     expect(response.body).toEqual({ error: 'Authentication required' });
+  });
+
+  it('revokes the current session on logout but preserves another user session', async () => {
+    const otherUserId = '64b000000000000000000002';
+    const passwordHash = await bcrypt.hash(registration.password, 4);
+    users.push(makeUser({ ...registration, passwordHash }));
+    users.push(
+      makeUser(
+        {
+          ...registration,
+          email: 'other@example.com',
+          passwordHash,
+        },
+        otherUserId,
+      ),
+    );
+
+    const firstToken = tokenFor(userId);
+    const otherToken = tokenFor(otherUserId);
+
+    const logout = await request(app)
+      .post('/api/auth/logout')
+      .set('Authorization', `Bearer ${firstToken}`);
+    const afterLogout = await request(app)
+      .get('/api/auth/me')
+      .set('Authorization', `Bearer ${firstToken}`);
+    const otherSession = await request(app)
+      .get('/api/auth/me')
+      .set('Authorization', `Bearer ${otherToken}`);
+
+    expect(logout.status).toBe(204);
+    expect(afterLogout.status).toBe(401);
+    expect(otherSession.status).toBe(200);
+    expect(TokenRevocation.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        userId,
+        tokenIdHash: expect.stringMatching(/^[a-f0-9]{64}$/),
+        expiresAt: expect.any(Date),
+      }),
+    );
+    expect(JSON.stringify(TokenRevocation.create.mock.calls)).not.toContain(
+      firstToken,
+    );
+    expect(AuditLog.create).toHaveBeenCalledWith({
+      actorUserId: userId,
+      action: 'auth.logout',
+      outcome: 'success',
+    });
+  });
+
+  it('rejects expired access tokens', async () => {
+    const expiredToken = jwt.sign({}, testSecret, {
+      algorithm: 'HS256',
+      subject: userId,
+      issuer: 'trustvault',
+      audience: 'trustvault-api',
+      expiresIn: -1,
+      jwtid: 'a'.repeat(64),
+    });
+
+    const response = await request(app)
+      .get('/api/auth/me')
+      .set('Authorization', `Bearer ${expiredToken}`);
+
+    expect(response.status).toBe(401);
+    expect(response.body).toEqual({ error: 'Authentication required' });
+    expect(TokenRevocation.exists).not.toHaveBeenCalled();
+  });
+
+  it('does not claim logout succeeded when revocation persistence fails', async () => {
+    const token = tokenFor(userId);
+    users.push(makeUser({ ...registration, passwordHash: 'unused' }));
+    TokenRevocation.create.mockRejectedValueOnce(
+      new Error('revocation database unavailable'),
+    );
+
+    const logout = await request(app)
+      .post('/api/auth/logout')
+      .set('Authorization', `Bearer ${token}`);
+    const stillValid = await request(app)
+      .get('/api/auth/me')
+      .set('Authorization', `Bearer ${token}`);
+
+    expect(logout.status).toBe(500);
+    expect(logout.body).toEqual({ error: 'Internal server error' });
+    expect(stillValid.status).toBe(200);
+    expect(AuditLog.create).not.toHaveBeenCalled();
   });
 });

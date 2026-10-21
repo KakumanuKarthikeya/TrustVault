@@ -47,6 +47,8 @@ Authentication endpoints:
 - `POST /api/auth/register` creates a regular owner account. Public
   registration rejects extra fields such as `role`; it cannot create admins.
 - `POST /api/auth/login` issues a 15-minute access token.
+- `POST /api/auth/logout` requires an access token and revokes only that
+  session. Revocation records persist in MongoDB across server restarts.
 - `GET /api/auth/me` requires `Authorization: Bearer <token>`.
 
 Document APIs are mounted at `/api/documents`. Uploads accept PDF, PNG, or JPEG
@@ -69,10 +71,12 @@ chat or commit `.env`.
 
 ## Current limitations
 
-There are no seed accounts, logout/token revocation, or deployment
-configuration. Access tokens remain valid until their 15-minute expiration
-unless the account is disabled; protected routes check account status against
-MongoDB. Audit writes use the application MongoDB connection and are awaited.
+There are no seed accounts or deployment configuration. Access tokens remain
+valid until their 15-minute expiration unless revoked or the account is
+disabled; protected routes check account status and revocation in MongoDB.
+Logout writes the revocation record before its audit event. If the audit write
+fails, the endpoint returns an error even though the token has already been
+revoked. Audit writes use the application MongoDB connection and are awaited.
 An audit-write failure prevents a success response; upload failure triggers
 best-effort removal of the newly created document and file. For updates,
 downloads, deletions, and permission changes, the primary operation may already
