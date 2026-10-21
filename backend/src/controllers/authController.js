@@ -3,6 +3,7 @@ const jwt = require('jsonwebtoken');
 const { z } = require('zod');
 const User = require('../models/User');
 const { getJwtSecret } = require('../middleware/authenticate');
+const { recordAuditEvent } = require('../services/auditLog');
 
 const passwordSchema = z
   .string()
@@ -95,6 +96,11 @@ async function login(request, response, next) {
     );
 
     if (!user || user.status !== 'active' || !passwordMatches) {
+      await recordAuditEvent({
+        action: 'auth.login.failed',
+        outcome: 'denied',
+        metadata: { reason: 'invalid_credentials' },
+      });
       return response.status(401).json({ error: 'Invalid email or password' });
     }
 

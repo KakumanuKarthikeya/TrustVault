@@ -3,8 +3,8 @@
 ## Current scope
 
 This stage provides an Express health endpoint, MongoDB connection,
-authentication, private document APIs, and owner-only permission management.
-Persistent audit records are not implemented.
+authentication, private document APIs, owner-only permission management, and
+persistent audit records.
 
 | Threat | Current mitigation or status |
 | --- | --- |
@@ -30,7 +30,11 @@ Persistent audit records are not implemented.
 | Revoked permission remains usable | There is no document-permission cache. Each protected request checks the current grant, so requests after revocation fail authorization. |
 | Metadata mass assignment | The metadata schema is strict and only updates `name`, `category`, and `description`; ownership, storage key, file bytes, MIME type, and size are not client-editable. |
 | Deletion across MongoDB and filesystem | Database deletion and filesystem removal are not a single atomic operation. A filesystem failure after record deletion may leave an inaccessible private orphan requiring operational cleanup. |
-| Missing audit records | No audit-log infrastructure exists. Controllers and authorization middleware have explicit integration points for successful document events and denied access, but activity and denied attempts are not currently persisted. |
+| Audit event tampering through the API | Audit history is readable only by active database-role administrators. There are no API update/delete routes, and persisted fields are immutable in the Mongoose schema. Database administrators remain able to alter records directly. |
+| Sensitive data leaking through audit logs | Audit records contain actor/action/resource identifiers, outcome, timestamp, and a strict allowlist of reason/action codes. They do not include credentials, tokens, cookies, filenames, document metadata, or document contents. |
+| Failed audit persistence producing a false success response | Controllers await audit insertion and forward persistence failures to the generic `500` handler. Uploads attempt compensation by deleting the new database record and file. For metadata changes, permission changes, deletion, or initiated downloads, the underlying operation may have taken effect before audit insertion failed; the API does not claim success, but does not guarantee rollback. |
+| Duplicate or inconsistent audit events | Successful events are written once in the operation controller after completion; authorization middleware writes denial events only when it rejects. Login audit events cover validly shaped credential failures only. Download records indicate authorized stream initiation, not verified full receipt. |
+| Unattributable authentication failures | Invalid bearer tokens and malformed login requests are not logged; they have no safely verified actor and logging unauthenticated input risks exposing or amplifying attacker-controlled data. Valid login attempts rejected for credentials are recorded without email, password, token, or IP address. |
 
 ## Verification
 
@@ -44,8 +48,8 @@ not prove live MongoDB behavior or deployed database indexes.
 
 ## Accepted risks and future work
 
-This service is not ready for production use: it has no persistent audit trail,
-logout/revocation denylist, or cross-resource filesystem/database transaction.
-The MongoDB Atlas network access policy,
+This service is not ready for production use: it has no logout/revocation
+denylist, audit transaction/outbox, or cross-resource filesystem/database
+transaction. The MongoDB Atlas network access policy,
 private storage backup/cleanup, and credential rotation are deployment
 responsibilities. Reassess this threat model before deployment.

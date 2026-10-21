@@ -3,6 +3,7 @@ const express = require('express');
 const helmet = require('helmet');
 const mongoose = require('mongoose');
 const authRoutes = require('./routes/authRoutes');
+const auditLogRoutes = require('./routes/auditLogRoutes');
 const documentRoutes = require('./routes/documentRoutes');
 const errorHandler = require('./middleware/errorHandler');
 
@@ -33,6 +34,7 @@ app.get('/health', (_request, response) => {
 
 app.use('/api/auth', authRoutes);
 app.use('/api/documents', documentRoutes);
+app.use('/api/audit-logs', auditLogRoutes);
 app.use(errorHandler);
 
 module.exports = app;

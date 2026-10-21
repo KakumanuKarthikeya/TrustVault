@@ -1,8 +1,8 @@
 # TrustVault backend
 
 The backend currently provides an Express health endpoint, MongoDB connection,
-authentication APIs, and protected document management. Persistent audit
-logging and permission-grant/revoke APIs are not implemented yet.
+authentication APIs, protected document management, permission management,
+and persistent security audit logging.
 
 ## Requirements
 
@@ -69,10 +69,16 @@ chat or commit `.env`.
 
 ## Current limitations
 
-There are no seed accounts, logout/token revocation, permission-grant/revoke
-APIs, deployment configuration, or persistent audit trail yet. Access tokens
-remain valid until their 15-minute expiration unless the account is disabled;
-protected routes check account status against MongoDB. Filesystem deletion and
-MongoDB deletion cannot be atomic together, so an I/O failure during deletion
-can require private-storage reconciliation. Do not treat this hackathon backend
-as production-ready without a deployment-specific security review.
+There are no seed accounts, logout/token revocation, or deployment
+configuration. Access tokens remain valid until their 15-minute expiration
+unless the account is disabled; protected routes check account status against
+MongoDB. Audit writes use the application MongoDB connection and are awaited.
+An audit-write failure prevents a success response; upload failure triggers
+best-effort removal of the newly created document and file. For updates,
+downloads, deletions, and permission changes, the primary operation may already
+have taken effect before a later audit insert fails, so a `500` does not prove
+that the operation was rolled back. MongoDB/filesystem operations and audit
+inserts are not transactional here. Downloads are logged when authorized
+streaming is initiated, not after the client confirms full receipt. Do not treat
+this hackathon backend as production-ready without a deployment-specific
+security review.

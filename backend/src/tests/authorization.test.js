@@ -10,12 +10,17 @@ jest.mock('../models/Permission', () => ({
   exists: jest.fn(),
 }));
 
+jest.mock('../models/AuditLog', () => ({
+  create: jest.fn(),
+}));
+
 const express = require('express');
 const jwt = require('jsonwebtoken');
 const request = require('supertest');
 const User = require('../models/User');
 const Document = require('../models/Document');
 const Permission = require('../models/Permission');
+const AuditLog = require('../models/AuditLog');
 const { authenticate } = require('../middleware/authenticate');
 const authorizeRoles = require('../middleware/authorizeRoles');
 const { createDocumentAccess } = require('../middleware/documentAccess');
@@ -89,6 +94,7 @@ beforeEach(() => {
     owner: OWNER_ID,
   });
   Permission.exists.mockResolvedValue(null);
+  AuditLog.create.mockResolvedValue({});
 });
 
 describe('Authorization middleware', () => {

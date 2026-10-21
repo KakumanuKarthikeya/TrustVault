@@ -4,9 +4,14 @@ jest.mock('../models/User', () => ({
   findOne: jest.fn(),
 }));
 
+jest.mock('../models/AuditLog', () => ({
+  create: jest.fn(),
+}));
+
 const bcrypt = require('bcrypt');
 const request = require('supertest');
 const User = require('../models/User');
+const AuditLog = require('../models/AuditLog');
 const app = require('../app');
 
 const userId = '64b000000000000000000001';
@@ -33,6 +38,7 @@ beforeAll(() => {
 beforeEach(() => {
   users = [];
   jest.clearAllMocks();
+  AuditLog.create.mockResolvedValue({});
 
   User.create.mockImplementation(async (values) => {
     if (users.some((user) => user.email === values.email)) {
@@ -138,6 +144,11 @@ describe('Authentication API', () => {
 
     expect(response.status).toBe(401);
     expect(response.body).toEqual({ error: 'Invalid email or password' });
+    expect(AuditLog.create).toHaveBeenCalledWith({
+      action: 'auth.login.failed',
+      outcome: 'denied',
+      metadata: { reason: 'invalid_credentials' },
+    });
   });
 
   it('logs in successfully and returns a token without a password hash', async () => {

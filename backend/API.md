@@ -165,8 +165,39 @@ Revokes the specified user's document permission.
 Document access middleware checks the current permission record on each
 request. Therefore, after a successful revoke, the next protected read,
 download, or edit request is denied. Deletion of a document remains owner-only.
-Admin role alone does not bypass document-level checks. Persistent audit
-logging is not implemented.
+Admin role alone does not bypass document-level checks.
+
+## Security audit history
+
+### `GET /api/audit-logs`
+
+Returns the newest persistent audit entries. The route is restricted on the
+server to authenticated, active users whose database role is `admin`.
+
+- **Optional query:** `limit` (positive integer; defaults to 50 and is capped
+  at 100).
+- **Success (`200`):** `{"auditLogs":[{"actorUserId":"...","action":"document.upload","documentId":"...","targetUserId":null,"permissionType":null,"timestamp":"...","outcome":"success","metadata":{}}]}`.
+- **Missing/invalid authentication (`401`):** `{"error":"Authentication required"}`.
+- **Non-admin (`403`):** `{"error":"Forbidden"}`.
+- **Invalid limit (`400`):** `{"error":"Invalid audit history limit"}`.
+
+Audit actions include document upload, download, metadata update, deletion,
+permission grant/revoke, denied document access, denied permission changes,
+and login failures with validly shaped but incorrect credentials. Failed
+authentication headers are not recorded because they do not provide a
+reliably attributable actor. Audit metadata is restricted to safe action and
+reason codes; passwords, tokens, cookies, database credentials, filenames,
+document metadata, and document contents are not included. There are no API
+routes to update or delete audit entries.
+
+Sensitive endpoints await audit persistence. A persistence error returns a
+server error rather than an audited-success response. Uploads attempt to remove
+the created document and file if the success record cannot be written. Other
+operations can already have committed before audit persistence fails, because
+the service does not use a MongoDB transaction or a transactional filesystem
+outbox; clients must not infer rollback from a `500`. A download is recorded
+when authorized streaming is initiated, not when complete delivery is
+confirmed.
 
 ## Authorization middleware
 

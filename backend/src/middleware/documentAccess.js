@@ -1,8 +1,10 @@
 const mongoose = require('mongoose');
 const Document = require('../models/Document');
 const Permission = require('../models/Permission');
+const { recordAuditEvent } = require('../services/auditLog');
 
 const ACCESS_LEVELS = new Set(['read', 'edit']);
+const UPLOAD_ROLES = new Set(['admin', 'owner']);
 
 function createDocumentAccess({
   DocumentModel = Document,
@@ -19,6 +21,7 @@ function createDocumentAccess({
       typeof documentId !== 'string' ||
       !mongoose.isValidObjectId(documentId)
     ) {
+      await recordDeniedLookup(request, null, 'invalid_document_id');
       response.status(404).json({ error: 'Document not found' });
       return false;
     }
@@ -29,6 +32,7 @@ function createDocumentAccess({
         ? await query.select('+storageKey')
         : await query;
     if (!document) {
+      await recordDeniedLookup(request, null, 'document_not_found');
       response.status(404).json({ error: 'Document not found' });
       return false;
     }
@@ -71,7 +75,16 @@ function createDocumentAccess({
           });
 
           if (!permission) {
-            // Audit integration point: persist denied document-access attempts when AuditLog is introduced.
+            await recordAuditEvent({
+              actorUserId: request.user._id,
+              action: 'document.access.denied',
+              documentId: request.document._id,
+              outcome: 'denied',
+              metadata: {
+                attemptedAction: attemptedDocumentAction(request),
+                reason: 'insufficient_permission',
+              },
+            });
             return response.status(403).json({ error: 'Forbidden' });
           }
 
@@ -92,7 +105,32 @@ function createDocumentAccess({
 
       const documentOwnerId = documentOwnerIdOf(request.document);
       if (!documentOwnerId || documentOwnerId !== String(request.user._id)) {
-        // Audit integration point: persist denied owner-only operations when AuditLog is introduced.
+        const isPermissionChange = request.params.userId !== undefined;
+        await recordAuditEvent({
+          actorUserId: request.user._id,
+          action: isPermissionChange
+            ? 'permission.change.denied'
+            : 'document.access.denied',
+          documentId: request.document._id,
+          targetUserId: isPermissionChange && mongoose.isValidObjectId(request.params.userId)
+            ? request.params.userId
+            : null,
+          permissionType:
+            isPermissionChange &&
+            request.body &&
+            ['read', 'edit'].includes(request.body.access)
+              ? request.body.access
+              : null,
+          outcome: 'denied',
+          metadata: {
+            attemptedAction: isPermissionChange
+              ? request.method === 'PUT'
+                ? 'permission.grant'
+                : 'permission.revoke'
+              : 'document.delete',
+            reason: 'not_document_owner',
+          },
+        });
         return response.status(403).json({ error: 'Forbidden' });
       }
 
@@ -103,6 +141,76 @@ function createDocumentAccess({
   }
 
   return { requireDocumentAccess, requireDocumentOwner };
+}
+
+async function requireDocumentUploadRole(request, response, next) {
+  if (!request.user) {
+    return response.status(401).json({ error: 'Authentication required' });
+  }
+  if (
+    request.user.status === 'active' &&
+    UPLOAD_ROLES.has(request.user.role)
+  ) {
+    return next();
+  }
+
+  try {
+    await recordAuditEvent({
+      actorUserId: request.user._id,
+      action: 'document.access.denied',
+      outcome: 'denied',
+      metadata: {
+        attemptedAction: 'document.upload',
+        reason: 'insufficient_permission',
+      },
+    });
+    return response.status(403).json({ error: 'Forbidden' });
+  } catch (error) {
+    return next(error);
+  }
+}
+
+async function recordDeniedLookup(request, documentId, reason) {
+  const isPermissionChange = request.params.userId !== undefined;
+  await recordAuditEvent({
+    actorUserId: request.user._id,
+    action: isPermissionChange
+      ? 'permission.change.denied'
+      : 'document.access.denied',
+    documentId,
+    targetUserId:
+      isPermissionChange && mongoose.isValidObjectId(request.params.userId)
+        ? request.params.userId
+        : null,
+    permissionType:
+      isPermissionChange &&
+      request.body &&
+      ['read', 'edit'].includes(request.body.access)
+        ? request.body.access
+        : null,
+    outcome: 'denied',
+    metadata: {
+      attemptedAction: isPermissionChange
+        ? request.method === 'PUT'
+          ? 'permission.grant'
+          : 'permission.revoke'
+        : attemptedDocumentAction(request),
+      reason,
+    },
+  });
+}
+
+function attemptedDocumentAction(request) {
+  if (request.method === 'GET' && request.path.endsWith('/download')) {
+    return 'document.download';
+  }
+  if (request.method === 'PATCH') {
+    return 'document.update';
+  }
+  if (request.method === 'DELETE') {
+    return 'document.delete';
+  }
+  return 'document.read';
 }
 
 function documentOwnerIdOf(document) {
@@ -119,6 +227,7 @@ const documentAccess = createDocumentAccess();
 
 module.exports = {
   createDocumentAccess,
+  requireDocumentUploadRole,
   requireDocumentAccess: documentAccess.requireDocumentAccess,
   requireDocumentOwner: documentAccess.requireDocumentOwner,
 };

@@ -2,8 +2,8 @@ const express = require('express');
 const multer = require('multer');
 const documentController = require('../controllers/documentController');
 const { authenticate } = require('../middleware/authenticate');
-const authorizeRoles = require('../middleware/authorizeRoles');
 const {
+  requireDocumentUploadRole,
   requireDocumentAccess,
   requireDocumentOwner,
 } = require('../middleware/documentAccess');
@@ -26,7 +26,7 @@ router.use(authenticate);
 
 router.post(
   '/',
-  authorizeRoles('admin', 'owner'),
+  requireDocumentUploadRole,
   uploadFile,
   documentController.upload,
 );

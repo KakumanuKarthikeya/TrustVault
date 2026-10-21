@@ -5,6 +5,7 @@ const Document = require('../models/Document');
 const Permission = require('../models/Permission');
 const User = require('../models/User');
 const privateFileStorage = require('../services/privateFileStorage');
+const { recordAuditEvent } = require('../services/auditLog');
 const { detectAllowedFile } = require('../utils/uploadValidation');
 
 const MAX_RESULTS = 100;
@@ -56,6 +57,40 @@ function parseDate(value) {
   return Number.isNaN(date.getTime()) ? null : date;
 }
 
+async function denyPermissionAttempt(
+  request,
+  response,
+  next,
+  status,
+  error,
+  reason,
+) {
+  try {
+    await recordAuditEvent({
+      actorUserId: request.user._id,
+      action: 'permission.change.denied',
+      documentId: request.document._id,
+      targetUserId: mongoose.isValidObjectId(request.params.userId)
+        ? request.params.userId
+        : null,
+      permissionType:
+        request.body &&
+        ['read', 'edit'].includes(request.body.access)
+          ? request.body.access
+          : null,
+      outcome: 'denied',
+      metadata: {
+        attemptedAction:
+          request.method === 'PUT' ? 'permission.grant' : 'permission.revoke',
+        reason,
+      },
+    });
+    return response.status(status).json({ error });
+  } catch (auditError) {
+    return next(auditError);
+  }
+}
+
 async function upload(request, response, next) {
   const fileInfo = detectAllowedFile(request.file);
   const metadata = uploadMetadataSchema.safeParse(request.body);
@@ -64,13 +99,14 @@ async function upload(request, response, next) {
   }
 
   let storageKey;
+  let document;
   try {
     storageKey = await privateFileStorage.storeFile(
       request.file.buffer,
       fileInfo.extension,
     );
 
-    const document = await Document.create({
+    document = await Document.create({
       owner: request.user._id,
       originalFilename: fileInfo.filename,
       storageKey,
@@ -81,17 +117,37 @@ async function upload(request, response, next) {
       size: request.file.size,
     });
 
-    // Audit integration point: persist a successful upload event when AuditLog is introduced.
+    await recordAuditEvent({
+      actorUserId: request.user._id,
+      action: 'document.upload',
+      documentId: document._id,
+      outcome: 'success',
+    });
     return response.status(201).json({ document: publicDocument(document) });
   } catch (error) {
+    const cleanupErrors = [];
+    if (document) {
+      try {
+        await document.deleteOne();
+      } catch (cleanupError) {
+        cleanupErrors.push(cleanupError);
+      }
+    }
     if (storageKey) {
       try {
         await privateFileStorage.removeFile(storageKey);
       } catch (cleanupError) {
-        return next(cleanupError);
+        cleanupErrors.push(cleanupError);
       }
     }
-    return next(error);
+    return next(
+      cleanupErrors.length > 0
+        ? new AggregateError(
+            [error, ...cleanupErrors],
+            'Document upload failed and cleanup was incomplete',
+          )
+        : error,
+    );
   }
 }
 
@@ -185,6 +241,12 @@ async function download(request, response, next) {
     const filePath = await privateFileStorage.getFilePath(
       request.document.storageKey,
     );
+    await recordAuditEvent({
+      actorUserId: request.user._id,
+      action: 'document.download',
+      documentId: request.document._id,
+      outcome: 'success',
+    });
     response.type(request.document.mimeType);
     response.attachment(request.document.originalFilename);
     response.set('Cache-Control', 'private, no-store');
@@ -203,7 +265,6 @@ async function download(request, response, next) {
     });
     stream.pipe(response);
 
-    // Audit integration point: persist an authorized download event when AuditLog is introduced.
   } catch (error) {
     if (error.code === 'ENOENT') {
       return response.status(404).json({ error: 'Document file not found' });
@@ -226,7 +287,12 @@ async function updateMetadata(request, response, next) {
     }
 
     await request.document.save();
-    // Audit integration point: persist a successful metadata edit when AuditLog is introduced.
+    await recordAuditEvent({
+      actorUserId: request.user._id,
+      action: 'document.update',
+      documentId: request.document._id,
+      outcome: 'success',
+    });
     return response.status(200).json({
       document: publicDocument(request.document),
     });
@@ -241,7 +307,12 @@ async function remove(request, response, next) {
     await request.document.deleteOne();
     await privateFileStorage.removeFile(storageKey);
 
-    // Audit integration point: persist a successful deletion event when AuditLog is introduced.
+    await recordAuditEvent({
+      actorUserId: request.user._id,
+      action: 'document.delete',
+      documentId: request.document._id,
+      outcome: 'success',
+    });
     return response.status(204).end();
   } catch (error) {
     return next(error);
@@ -250,22 +321,50 @@ async function remove(request, response, next) {
 
 async function grantPermission(request, response, next) {
   if (!mongoose.isValidObjectId(request.params.userId)) {
-    return response.status(400).json({ error: 'Invalid user ID' });
+    return denyPermissionAttempt(
+      request,
+      response,
+      next,
+      400,
+      'Invalid user ID',
+      'invalid_target_id',
+    );
   }
 
   const input = permissionSchema.safeParse(request.body);
   if (!input.success) {
-    return response.status(400).json({ error: 'Invalid permission' });
+    return denyPermissionAttempt(
+      request,
+      response,
+      next,
+      400,
+      'Invalid permission',
+      'invalid_permission',
+    );
   }
 
   if (String(request.params.userId) === String(request.user._id)) {
-    return response.status(400).json({ error: 'Cannot grant access to yourself' });
+    return denyPermissionAttempt(
+      request,
+      response,
+      next,
+      400,
+      'Cannot grant access to yourself',
+      'self_grant',
+    );
   }
 
   try {
     const targetUser = await User.findById(request.params.userId);
     if (!targetUser || targetUser.status !== 'active') {
-      return response.status(404).json({ error: 'User not found' });
+      return denyPermissionAttempt(
+        request,
+        response,
+        next,
+        404,
+        'User not found',
+        'target_user_unavailable',
+      );
     }
 
     const permission = await Permission.findOneAndUpdate(
@@ -282,7 +381,14 @@ async function grantPermission(request, response, next) {
       },
     );
 
-    // Audit integration point: persist permission grant/change when AuditLog is introduced.
+    await recordAuditEvent({
+      actorUserId: request.user._id,
+      action: 'permission.grant',
+      documentId: request.document._id,
+      targetUserId: targetUser._id,
+      permissionType: permission.access,
+      outcome: 'success',
+    });
     return response.status(200).json({
       permission: {
         documentId: String(permission.documentId),
@@ -297,20 +403,41 @@ async function grantPermission(request, response, next) {
 
 async function revokePermission(request, response, next) {
   if (!mongoose.isValidObjectId(request.params.userId)) {
-    return response.status(400).json({ error: 'Invalid user ID' });
+    return denyPermissionAttempt(
+      request,
+      response,
+      next,
+      400,
+      'Invalid user ID',
+      'invalid_target_id',
+    );
   }
 
   try {
-    const result = await Permission.deleteOne({
+    const permission = await Permission.findOneAndDelete({
       documentId: request.document._id,
       userId: request.params.userId,
     });
 
-    if (result.deletedCount === 0) {
-      return response.status(404).json({ error: 'Permission not found' });
+    if (!permission) {
+      return denyPermissionAttempt(
+        request,
+        response,
+        next,
+        404,
+        'Permission not found',
+        'permission_not_found',
+      );
     }
 
-    // Audit integration point: persist permission revocation when AuditLog is introduced.
+    await recordAuditEvent({
+      actorUserId: request.user._id,
+      action: 'permission.revoke',
+      documentId: request.document._id,
+      targetUserId: request.params.userId,
+      permissionType: permission.access,
+      outcome: 'success',
+    });
     return response.status(204).end();
   } catch (error) {
     return next(error);

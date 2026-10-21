@@ -9,10 +9,14 @@ jest.mock('../models/Document', () => ({
 }));
 
 jest.mock('../models/Permission', () => ({
-  deleteOne: jest.fn(),
   exists: jest.fn(),
   find: jest.fn(),
+  findOneAndDelete: jest.fn(),
   findOneAndUpdate: jest.fn(),
+}));
+
+jest.mock('../models/AuditLog', () => ({
+  create: jest.fn(),
 }));
 
 jest.mock('../services/privateFileStorage', () => ({
@@ -29,6 +33,7 @@ const request = require('supertest');
 const User = require('../models/User');
 const Document = require('../models/Document');
 const Permission = require('../models/Permission');
+const AuditLog = require('../models/AuditLog');
 const privateFileStorage = require('../services/privateFileStorage');
 const app = require('../app');
 
@@ -155,16 +160,13 @@ function installDocumentMocks() {
     }
     return permission;
   });
-  Permission.deleteOne.mockImplementation(async (filter) => {
-    const initialLength = permissionRecords.length;
-    permissionRecords = permissionRecords.filter(
+  Permission.findOneAndDelete.mockImplementation(async (filter) => {
+    const index = permissionRecords.findIndex(
       (record) =>
-        !(
-          record.documentId === filter.documentId &&
-          record.userId === filter.userId
-        ),
+        record.documentId === filter.documentId &&
+        record.userId === filter.userId,
     );
-    return { deletedCount: initialLength - permissionRecords.length };
+    return index === -1 ? null : permissionRecords.splice(index, 1)[0];
   });
   Permission.find.mockReturnValue({
     select: jest.fn().mockReturnThis(),
@@ -174,6 +176,7 @@ function installDocumentMocks() {
   privateFileStorage.storeFile.mockResolvedValue(STORAGE_KEY);
   privateFileStorage.getFilePath.mockResolvedValue(downloadablePath);
   privateFileStorage.removeFile.mockResolvedValue(undefined);
+  AuditLog.create.mockResolvedValue({});
 }
 
 beforeAll(async () => {
@@ -225,6 +228,28 @@ describe('Document API', () => {
         mimeType: 'application/pdf',
       }),
     );
+    expect(AuditLog.create).toHaveBeenCalledWith({
+      actorUserId: OWNER_ID,
+      action: 'document.upload',
+      documentId: DOCUMENT_ID,
+      outcome: 'success',
+    });
+  });
+
+  it('fails an upload and removes its file if audit persistence fails', async () => {
+    AuditLog.create.mockRejectedValue(new Error('audit database unavailable'));
+    const response = await request(app)
+      .post('/api/documents')
+      .set('Authorization', authenticateAs(OWNER_ID))
+      .attach('file', PDF_BUFFER, {
+        filename: 'contract.pdf',
+        contentType: 'application/pdf',
+      });
+
+    expect(response.status).toBe(500);
+    expect(response.body).toEqual({ error: 'Internal server error' });
+    expect(records).toHaveLength(0);
+    expect(privateFileStorage.removeFile).toHaveBeenCalledWith(STORAGE_KEY);
   });
 
   it('rejects content whose signature does not match its declared type', async () => {
@@ -240,6 +265,28 @@ describe('Document API', () => {
     expect(response.body).toEqual({ error: 'Invalid document upload' });
     expect(privateFileStorage.storeFile).not.toHaveBeenCalled();
     expect(Document.create).not.toHaveBeenCalled();
+  });
+
+  it('audits viewer upload denials without accepting the file', async () => {
+    const response = await request(app)
+      .post('/api/documents')
+      .set('Authorization', authenticateAs(OTHER_USER_ID, 'viewer'))
+      .attach('file', PDF_BUFFER, {
+        filename: 'contract.pdf',
+        contentType: 'application/pdf',
+      });
+
+    expect(response.status).toBe(403);
+    expect(AuditLog.create).toHaveBeenCalledWith({
+      actorUserId: OTHER_USER_ID,
+      action: 'document.access.denied',
+      outcome: 'denied',
+      metadata: {
+        attemptedAction: 'document.upload',
+        reason: 'insufficient_permission',
+      },
+    });
+    expect(privateFileStorage.storeFile).not.toHaveBeenCalled();
   });
 
   it('rejects unsupported MIME types', async () => {
@@ -283,6 +330,29 @@ describe('Document API', () => {
     expect(metadata.status).toBe(403);
     expect(download.status).toBe(403);
     expect(privateFileStorage.getFilePath).not.toHaveBeenCalled();
+    expect(AuditLog.create).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({
+        actorUserId: OTHER_USER_ID,
+        action: 'document.access.denied',
+        documentId: DOCUMENT_ID,
+        outcome: 'denied',
+        metadata: {
+          attemptedAction: 'document.read',
+          reason: 'insufficient_permission',
+        },
+      }),
+    );
+    expect(AuditLog.create).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        action: 'document.access.denied',
+        metadata: {
+          attemptedAction: 'document.download',
+          reason: 'insufficient_permission',
+        },
+      }),
+    );
   });
 
   it('lists only owned or explicitly shared documents and applies search filters', async () => {
@@ -376,12 +446,24 @@ describe('Document API', () => {
     expect(update.status).toBe(200);
     expect(document.name).toBe('Updated contract');
     expect(update.body.document.storageKey).toBeUndefined();
+    expect(AuditLog.create).toHaveBeenCalledWith({
+      actorUserId: OWNER_ID,
+      action: 'document.update',
+      documentId: DOCUMENT_ID,
+      outcome: 'success',
+    });
 
     const deletion = await request(app)
       .delete(`/api/documents/${DOCUMENT_ID}`)
       .set('Authorization', authenticateAs(OWNER_ID));
     expect(deletion.status).toBe(204);
     expect(privateFileStorage.removeFile).toHaveBeenCalledWith(STORAGE_KEY);
+    expect(AuditLog.create).toHaveBeenLastCalledWith({
+      actorUserId: OWNER_ID,
+      action: 'document.delete',
+      documentId: DOCUMENT_ID,
+      outcome: 'success',
+    });
   });
 
   it.each(['read', 'edit'])('allows the owner to grant %s access', async (access) => {
@@ -404,6 +486,32 @@ describe('Document API', () => {
       { $set: { access } },
       expect.objectContaining({ upsert: true, runValidators: true }),
     );
+    expect(AuditLog.create).toHaveBeenCalledWith({
+      actorUserId: OWNER_ID,
+      action: 'permission.grant',
+      documentId: DOCUMENT_ID,
+      targetUserId: recipient,
+      permissionType: access,
+      outcome: 'success',
+    });
+  });
+
+  it('does not return success if a permission grant cannot be audited', async () => {
+    const recipient = '64b000000000000000000005';
+    records.push(makeDocument());
+    users.set(recipient, makeUser(recipient, 'viewer'));
+    AuditLog.create.mockRejectedValue(new Error('audit database unavailable'));
+
+    const response = await request(app)
+      .put(`/api/documents/${DOCUMENT_ID}/permissions/${recipient}`)
+      .set('Authorization', authenticateAs(OWNER_ID))
+      .send({ access: 'edit' });
+
+    expect(response.status).toBe(500);
+    expect(response.body).toEqual({ error: 'Internal server error' });
+    expect(permissionRecords).toEqual([
+      { documentId: DOCUMENT_ID, userId: recipient, access: 'edit' },
+    ]);
   });
 
   it('updates a duplicate grant rather than creating a duplicate', async () => {
@@ -442,8 +550,33 @@ describe('Document API', () => {
 
     expect(grant.status).toBe(403);
     expect(revoke.status).toBe(403);
+    expect(AuditLog.create).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({
+        action: 'permission.change.denied',
+        actorUserId: OTHER_USER_ID,
+        documentId: DOCUMENT_ID,
+        targetUserId: recipient,
+        permissionType: 'read',
+        outcome: 'denied',
+        metadata: {
+          attemptedAction: 'permission.grant',
+          reason: 'not_document_owner',
+        },
+      }),
+    );
+    expect(AuditLog.create).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        action: 'permission.change.denied',
+        metadata: {
+          attemptedAction: 'permission.revoke',
+          reason: 'not_document_owner',
+        },
+      }),
+    );
     expect(Permission.findOneAndUpdate).not.toHaveBeenCalled();
-    expect(Permission.deleteOne).not.toHaveBeenCalled();
+    expect(Permission.findOneAndDelete).not.toHaveBeenCalled();
   });
 
   it('rejects invalid recipient IDs, unknown users, and invalid permission values', async () => {
@@ -511,6 +644,14 @@ describe('Document API', () => {
       .delete(`/api/documents/${DOCUMENT_ID}/permissions/${recipient}`)
       .set('Authorization', authenticateAs(OWNER_ID));
     expect(revoke.status).toBe(204);
+    expect(AuditLog.create).toHaveBeenCalledWith({
+      actorUserId: OWNER_ID,
+      action: 'permission.revoke',
+      documentId: DOCUMENT_ID,
+      targetUserId: recipient,
+      permissionType: 'edit',
+      outcome: 'success',
+    });
 
     const authorization = authenticateAs(recipient, 'viewer');
     const read = await request(app)
