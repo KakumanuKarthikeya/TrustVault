@@ -184,7 +184,8 @@ Revokes the specified user's document permission.
 
 Document access middleware checks the current permission record on each
 request. Therefore, after a successful revoke, the next protected read,
-download, or edit request is denied. Deletion of a document remains owner-only.
+download, or edit request is denied. A non-owner with an edit grant was never
+authorized to delete; deletion remains owner-only before and after revocation.
 Admin role alone does not bypass document-level checks.
 
 ## Security audit history
@@ -231,7 +232,7 @@ confirmed.
 - **`requireDocumentAccess('edit')`:** Owners can edit their own document;
   other users need an explicit `edit` permission.
 - **`requireDocumentOwner`:** Loads the document and permits only its recorded
-  owner. Use this for owner-only actions such as future permission management.
+  owner. This protects document deletion and permission management.
 
 Missing or malformed documents return `404`; missing permission or non-owner
 requests return `403`. Document role `admin` does not implicitly bypass

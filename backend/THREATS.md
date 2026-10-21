@@ -18,7 +18,7 @@ persistent audit records.
 | Email enumeration on login | Unknown email, wrong password, and disabled account share the same `401` response. A dummy bcrypt comparison is performed for unknown emails to reduce timing differences. |
 | Guessable or long-lived access token | JWT uses HS256, a configured signing key of at least 32 bytes, issuer/audience checks, a cryptographically random token ID, and a 15-minute expiration. |
 | Repeated login or registration attempts | Each authentication route has a per-IP limit of 10 requests per 15-minute window. Production deployments behind proxies must configure Express trusted-proxy settings carefully before relying on client IP rate limits. |
-| Revoked or disabled account continuing to authenticate | Every protected request verifies the JWT, checks the persistent token-revocation collection, and reloads the account from MongoDB. Revocation records contain only a hash of the random token ID and expire with the token; revocations survive process restarts. |
+| Revoked or disabled account continuing to authenticate | Every protected request verifies the JWT, checks the persistent token-revocation collection, and reloads the account from MongoDB. Revocation records contain only a hash of the random token ID and expire with the token; revocations survive process restarts. Startup explicitly builds the unique token-ID hash and unique permission-pair indexes; index build failures abort startup. |
 | Request injection or unexpected registration fields | Zod validates and normalizes request bodies; schemas reject unknown keys. |
 | Caller-supplied role used to escalate privileges | `authorizeRoles` checks the active database-loaded `request.user`; it does not read role claims from client input or JWT claims. Public registration continues to reject extra fields and assigns `owner`. |
 | Cross-user document access / IDOR | Document-access middleware loads the document using its route ID, compares its stored owner ID, and checks a persisted permission for other users. Owner-only grant/revoke routes validate user IDs and access values. Missing or malformed documents fail closed. |
@@ -40,8 +40,9 @@ persistent audit records.
 ## Verification
 
 The current Jest tests exercise the HTTP readiness response while MongoDB is
-disconnected and reject an empty connection string before connecting. These
-checks do not verify access to a live Atlas deployment. Auth, authorization,
+disconnected, reject an empty connection string, and mock startup index
+creation/failure. These checks do not verify access to a live Atlas deployment.
+Auth, authorization,
 and document API tests use Supertest with mocked persistence; they exercise
 routes/middleware, permission grant/revoke behavior, immediate authorization
 rechecks, upload validation, safe storage-key handling, and file limits, but do
@@ -51,6 +52,8 @@ not prove live MongoDB behavior or deployed database indexes.
 
 This service is not ready for production use: it has no audit transaction/outbox
 or cross-resource filesystem/database transaction. Revocation depends on the
-availability and durability of MongoDB and its indexes. The MongoDB Atlas network access policy,
-private storage backup/cleanup, and credential rotation are deployment
-responsibilities. Reassess this threat model before deployment.
+availability and durability of MongoDB and its indexes. Existing permission
+or revocation records that conflict with unique indexes can prevent startup
+until repaired. The MongoDB Atlas network access policy, private storage
+backup/cleanup, and credential rotation are deployment responsibilities.
+Reassess this threat model before deployment.

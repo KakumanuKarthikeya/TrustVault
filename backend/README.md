@@ -69,6 +69,36 @@ chat or commit `.env`.
 | `JWT_SECRET` | Private signing key; authentication requires at least 32 bytes |
 | `PRIVATE_UPLOAD_DIR` | Optional private storage directory; defaults to `backend/private-uploads` and must not be inside `backend/public` |
 
+## Verify against a real MongoDB database
+
+The Jest suite uses mocked models for API persistence; it does not prove Atlas
+connectivity. To verify a real deployment:
+
+1. Copy `.env.example` to `.env`. Set `MONGODB_URI` to a test database URI and
+   `JWT_SECRET` to a private random value of at least 32 bytes. Never paste
+   credentials into chat or commit `.env`.
+2. Permit the development machine's current IP in the MongoDB network access
+   policy and use a database user limited to the test database.
+3. From `backend/`, run `npm run dev`. Startup must complete database
+   connection and creation of the unique permission and token-revocation
+   indexes before the HTTP listener starts. An index-build failure prevents
+   startup.
+4. In another PowerShell window, run
+   `Invoke-RestMethod http://localhost:3000/health` and confirm
+   `status = ok` and `database = connected`.
+5. Register/login with test accounts. Keep each returned token in a local
+   PowerShell variable; call `GET /api/auth/me`, then `POST /api/auth/logout`
+   with one token and verify that the same token receives `401` on `/me` while
+   a separately issued token still succeeds.
+6. In `mongosh`, connected to that same test database, inspect
+   `db.permissions.getIndexes()` and `db.tokenrevocations.getIndexes()`.
+   Confirm the unique `(documentId, userId)` permission index, unique
+   `tokenIdHash` index, and TTL `expiresAt` index exist.
+7. With test owner and recipient accounts, upload a harmless test PDF, grant
+   edit access, verify allowed read/download/update, revoke the grant, and
+   verify subsequent read/download/update requests are denied. Delete remains
+   owner-only before and after revocation.
+
 ## Current limitations
 
 There are no seed accounts or deployment configuration. Access tokens remain

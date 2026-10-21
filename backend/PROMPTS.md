@@ -1,5 +1,24 @@
 # AI interaction record
 
+## 2026-10-21 — Final backend security/integration review
+
+- **Request:** Review authentication, authorization, permissions, audit logging,
+  file handling, validation, secrets, MongoDB, documentation, and security
+  tests. Keep changes inside `backend/` and do not modify the frontend.
+- **Findings addressed:** Root-level project documentation was reported stale
+  but left unchanged because the requested edit scope was backend-only. Backend
+  docs now include exact real-MongoDB verification steps. Database startup
+  explicitly builds unique permission and token-revocation indexes and closes
+  the connection if index setup fails. Tests cover index startup/failure,
+  fail-closed revocation-store errors, malformed signed tokens, and accurately
+  distinguish owner-only deletion from permission revocation.
+- **Verification:** `npm test` passed: 9 suites, 54 tests. `git diff --check`
+  passed. `.env` and private-upload paths are ignored and not tracked;
+  `.env.example` contains only blank configuration assignments.
+- **Not verified:** No live MongoDB/Atlas connection, deployed index inspection,
+  production configuration, or frontend logout integration was tested.
+- **Commit:** None.
+
 ## 2026-10-20 — Initial health endpoint and MongoDB setup
 
 - **Request:** Inspect the existing backend and implement the initial health

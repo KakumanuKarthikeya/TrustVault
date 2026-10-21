@@ -630,7 +630,7 @@ describe('Document API', () => {
     expect(Permission.findOneAndUpdate).not.toHaveBeenCalled();
   });
 
-  it('revokes a grant and denies the next read, download, update, and delete request', async () => {
+  it('revokes a grant and denies subsequent reads, downloads, and updates while deletion stays owner-only', async () => {
     const recipient = '64b000000000000000000005';
     records.push(makeDocument());
     users.set(recipient, makeUser(recipient, 'viewer'));
@@ -647,6 +647,12 @@ describe('Document API', () => {
           filter.access.$in.includes(record.access),
       ) || null,
     );
+
+    const unauthorizedDelete = await request(app)
+      .delete(`/api/documents/${DOCUMENT_ID}`)
+      .set('Authorization', authenticateAs(recipient, 'viewer'));
+    expect(unauthorizedDelete.status).toBe(403);
+    expect(records).toHaveLength(1);
 
     const revoke = await request(app)
       .delete(`/api/documents/${DOCUMENT_ID}/permissions/${recipient}`)
@@ -672,14 +678,14 @@ describe('Document API', () => {
       .patch(`/api/documents/${DOCUMENT_ID}`)
       .set('Authorization', authenticateAs(recipient, 'viewer'))
       .send({ name: 'Unauthorized change' });
-    const deletion = await request(app)
+    const deletionAfterRevoke = await request(app)
       .delete(`/api/documents/${DOCUMENT_ID}`)
       .set('Authorization', authenticateAs(recipient, 'viewer'));
 
     expect(read.status).toBe(403);
     expect(download.status).toBe(403);
     expect(update.status).toBe(403);
-    expect(deletion.status).toBe(403);
+    expect(deletionAfterRevoke.status).toBe(403);
     expect(privateFileStorage.getFilePath).not.toHaveBeenCalled();
     expect(records).toHaveLength(1);
   });

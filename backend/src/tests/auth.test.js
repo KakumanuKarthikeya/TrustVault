@@ -289,6 +289,41 @@ describe('Authentication API', () => {
     expect(TokenRevocation.exists).not.toHaveBeenCalled();
   });
 
+  it('rejects validly signed tokens without the required token identifier', async () => {
+    const malformedToken = jwt.sign({}, testSecret, {
+      algorithm: 'HS256',
+      subject: userId,
+      issuer: 'trustvault',
+      audience: 'trustvault-api',
+      expiresIn: '15m',
+    });
+
+    const response = await request(app)
+      .get('/api/auth/me')
+      .set('Authorization', `Bearer ${malformedToken}`);
+
+    expect(response.status).toBe(401);
+    expect(response.body).toEqual({ error: 'Authentication required' });
+    expect(TokenRevocation.exists).not.toHaveBeenCalled();
+    expect(User.findById).not.toHaveBeenCalled();
+  });
+
+  it('fails closed when the revocation store cannot be checked', async () => {
+    const token = tokenFor(userId);
+    TokenRevocation.exists.mockRejectedValueOnce(
+      new Error('revocation database unavailable'),
+    );
+    users.push(makeUser({ ...registration, passwordHash: 'unused' }));
+
+    const response = await request(app)
+      .get('/api/auth/me')
+      .set('Authorization', `Bearer ${token}`);
+
+    expect(response.status).toBe(500);
+    expect(response.body).toEqual({ error: 'Internal server error' });
+    expect(User.findById).not.toHaveBeenCalled();
+  });
+
   it('does not claim logout succeeded when revocation persistence fails', async () => {
     const token = tokenFor(userId);
     users.push(makeUser({ ...registration, passwordHash: 'unused' }));

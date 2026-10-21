@@ -1,4 +1,6 @@
 const mongoose = require('mongoose');
+const Permission = require('../models/Permission');
+const TokenRevocation = require('../models/TokenRevocation');
 
 async function connectDatabase(uri = process.env.MONGODB_URI) {
   if (typeof uri !== 'string' || uri.trim() === '') {
@@ -6,6 +8,20 @@ async function connectDatabase(uri = process.env.MONGODB_URI) {
   }
 
   await mongoose.connect(uri, { serverSelectionTimeoutMS: 5000 });
+  try {
+    await Permission.createIndexes();
+    await TokenRevocation.createIndexes();
+  } catch (error) {
+    try {
+      await mongoose.disconnect();
+    } catch (disconnectError) {
+      throw new AggregateError(
+        [error, disconnectError],
+        'Database index setup failed and the connection could not be closed',
+      );
+    }
+    throw error;
+  }
   return mongoose.connection;
 }
 
