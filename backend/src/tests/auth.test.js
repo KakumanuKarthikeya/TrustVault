@@ -16,6 +16,7 @@ jest.mock('../models/TokenRevocation', () => ({
 const bcrypt = require('bcrypt');
 const crypto = require('node:crypto');
 const jwt = require('jsonwebtoken');
+const mongoose = require('mongoose');
 const request = require('supertest');
 const User = require('../models/User');
 const AuditLog = require('../models/AuditLog');
@@ -56,6 +57,7 @@ beforeAll(() => {
 });
 
 beforeEach(() => {
+  mongoose.connection.readyState = 1;
   users = [];
   revokedTokens = new Map();
   jest.clearAllMocks();

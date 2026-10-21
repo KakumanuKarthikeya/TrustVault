@@ -204,7 +204,8 @@ server to authenticated, active users whose database role is `admin`.
 
 Audit actions include document upload, download, metadata update, deletion,
 permission grant/revoke, denied document access, denied permission changes,
-and login failures with validly shaped but incorrect credentials. Failed
+login failures with validly shaped but incorrect credentials, and initial
+administrator promotion through the one-time server-side bootstrap. Failed
 authentication headers are not recorded because they do not provide a
 reliably attributable actor. Audit metadata is restricted to safe action and
 reason codes; passwords, tokens, cookies, database credentials, filenames,

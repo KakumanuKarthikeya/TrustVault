@@ -21,6 +21,7 @@ jest.mock('../models/TokenRevocation', () => ({
 
 const jwt = require('jsonwebtoken');
 const crypto = require('node:crypto');
+const mongoose = require('mongoose');
 const request = require('supertest');
 const AuditLog = require('../models/AuditLog');
 const TokenRevocation = require('../models/TokenRevocation');
@@ -30,9 +31,10 @@ const app = require('../app');
 const JWT_SECRET = 'audit-log-test-secret-longer-than-32-bytes';
 const ADMIN_ID = '64b000000000000000000010';
 const VIEWER_ID = '64b000000000000000000011';
+const OWNER_ID = '64b000000000000000000012';
 
-function tokenFor(userId) {
-  return jwt.sign({}, JWT_SECRET, {
+function tokenFor(userId, claims = {}) {
+  return jwt.sign(claims, JWT_SECRET, {
     algorithm: 'HS256',
     subject: userId,
     issuer: 'trustvault',
@@ -58,10 +60,11 @@ beforeAll(() => {
 });
 
 beforeEach(() => {
+  mongoose.connection.readyState = 1;
   jest.clearAllMocks();
   User.findById.mockImplementation(async (id) => ({
     _id: id,
-    role: id === ADMIN_ID ? 'admin' : 'viewer',
+    role: id === ADMIN_ID ? 'admin' : id === OWNER_ID ? 'owner' : 'viewer',
     status: 'active',
   }));
   TokenRevocation.exists.mockResolvedValue(null);
@@ -84,6 +87,12 @@ describe('Audit history API', () => {
     const viewerResponse = await request(app)
       .get('/api/audit-logs')
       .set('Authorization', `Bearer ${tokenFor(VIEWER_ID)}`);
+    const ownerResponse = await request(app)
+      .get('/api/audit-logs')
+      .set('Authorization', `Bearer ${tokenFor(OWNER_ID)}`);
+    const forgedAdminResponse = await request(app)
+      .get('/api/audit-logs')
+      .set('Authorization', `Bearer ${tokenFor(VIEWER_ID, { role: 'admin' })}`);
     const anonymousResponse = await request(app).get('/api/audit-logs');
 
     expect(adminResponse.status).toBe(200);
@@ -96,6 +105,8 @@ describe('Audit history API', () => {
       'actorUserId action documentId targetUserId permissionType timestamp outcome metadata',
     );
     expect(viewerResponse.status).toBe(403);
+    expect(ownerResponse.status).toBe(403);
+    expect(forgedAdminResponse.status).toBe(403);
     expect(anonymousResponse.status).toBe(401);
     expect(AuditLog.find).toHaveBeenCalledTimes(1);
   });

@@ -32,6 +32,13 @@ app.get('/health', (_request, response) => {
   });
 });
 
+app.use('/api', (_request, response, next) => {
+  if (mongoose.connection.readyState !== 1) {
+    return response.status(503).json({ error: 'Database unavailable' });
+  }
+  return next();
+});
+
 app.use('/api/auth', authRoutes);
 app.use('/api/documents', documentRoutes);
 app.use('/api/audit-logs', auditLogRoutes);

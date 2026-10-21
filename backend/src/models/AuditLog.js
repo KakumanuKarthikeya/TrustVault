@@ -54,6 +54,7 @@ const auditLogSchema = new mongoose.Schema(
         'permission.change.denied',
         'auth.login.failed',
         'auth.logout',
+        'auth.admin.bootstrap',
       ],
       required: true,
       immutable: true,

@@ -51,6 +51,29 @@ Authentication endpoints:
   session. Revocation records persist in MongoDB across server restarts.
 - `GET /api/auth/me` requires `Authorization: Bearer <token>`.
 
+### Initial administrator setup
+
+Public registration always creates an `owner` and rejects a supplied `role`.
+To promote an existing active account, run the one-time bootstrap from the
+`backend` directory:
+
+```powershell
+npm run promote-admin
+```
+
+Enter the account's existing email and then type the displayed
+`PROMOTE <email>` confirmation. The command changes only that account's role;
+it does not change its email or password. It works only when no administrator
+exists, and a database uniqueness claim prevents concurrent or subsequent
+bootstrap attempts from promoting another account. The operation is recorded
+in the audit history. Do not run the command unless you intend to grant admin
+access to that account.
+
+After success, sign out and sign back in. Verify the account's role through
+`GET /api/auth/me`, then open Audit History. The backend checks the account's
+current database role for every request; JWT role claims are not used for
+authorization.
+
 Document APIs are mounted at `/api/documents`. Uploads accept PDF, PNG, or JPEG
 files up to 5 MiB. The private storage directory defaults to
 `backend/private-uploads` and is not mounted as static content. See [API.md](./API.md)
