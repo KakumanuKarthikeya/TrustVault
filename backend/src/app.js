@@ -5,6 +5,7 @@ const mongoose = require('mongoose');
 const authRoutes = require('./routes/authRoutes');
 const auditLogRoutes = require('./routes/auditLogRoutes');
 const documentRoutes = require('./routes/documentRoutes');
+const userRoutes = require('./routes/userRoutes');
 const errorHandler = require('./middleware/errorHandler');
 
 const app = express();
@@ -41,6 +42,7 @@ app.use('/api', (_request, response, next) => {
 
 app.use('/api/auth', authRoutes);
 app.use('/api/documents', documentRoutes);
+app.use('/api/users', userRoutes);
 app.use('/api/audit-logs', auditLogRoutes);
 app.use(errorHandler);
 

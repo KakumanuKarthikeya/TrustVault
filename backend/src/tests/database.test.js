@@ -49,7 +49,11 @@ describe('connectDatabase', () => {
 
     await expect(
       connectDatabase('mongodb://localhost/trustvault-test'),
-    ).rejects.toThrow('index creation failed');
+    ).rejects.toMatchObject({
+      name: 'AggregateError',
+      message: 'Database index setup failed',
+      errors: [expect.objectContaining({ message: 'index creation failed' })],
+    });
     expect(disconnect).toHaveBeenCalledTimes(1);
   });
 

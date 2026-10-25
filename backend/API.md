@@ -84,6 +84,26 @@ is independently enforced by JWT verification. Revocation survives application
 restarts and does not revoke other sessions for the same user. Logout is
 recorded in the audit history without storing the token or identifier.
 
+## User lookup
+
+### `GET /api/users/lookup?email=recipient@example.com`
+
+Finds one active account by exact email for document sharing.
+
+- **Authentication:** Required; send the access token in the `Authorization`
+  header.
+- **Rate limit:** 20 lookups per IP in a 15-minute window.
+- **Success (`200`):** `{"user":{"id":"...","name":"Recipient User","email":"recipient@example.com"}}`.
+- **Invalid email (`400`):** `{"error":"Enter a valid email address"}`.
+- **No active matching account (`404`):** `{"error":"No active account found for that email"}`.
+- **Missing or invalid authentication (`401`):** `{"error":"Authentication required"}`.
+
+Email matching is trimmed and case-insensitive. The endpoint returns only the
+recipient ID, name, and email; it excludes the signed-in user's own account and
+does not provide a user directory or partial-match search. Account IDs are
+returned only to authenticated callers because the permission API requires the
+recipient ID. Lookup is rate-limited to reduce account enumeration.
+
 ## Documents
 
 All document endpoints require `Authorization: Bearer <access-token>`.

@@ -20,7 +20,9 @@ async function connectDatabase(uri = process.env.MONGODB_URI) {
         'Database index setup failed and the connection could not be closed',
       );
     }
-    throw error;
+    throw new AggregateError([error], 'Database index setup failed', {
+      cause: error,
+    });
   }
   return mongoose.connection;
 }

@@ -10,6 +10,7 @@ import {
   revokeDocumentPermission,
   updateDocument,
 } from '../services/documentService.js'
+import { lookupUserByEmail } from '../services/userService.js'
 import formatBytes from '../utils/formatBytes.js'
 
 const dateFormat = new Intl.DateTimeFormat(undefined, { dateStyle: 'medium' })
@@ -27,7 +28,9 @@ function DocumentActions({ document, owned, onChanged }) {
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [manageAccess, setManageAccess] = useState(false)
   const [confirmRevoke, setConfirmRevoke] = useState(false)
-  const [accountId, setAccountId] = useState('')
+  const [recipientEmail, setRecipientEmail] = useState('')
+  const [recipient, setRecipient] = useState(null)
+  const [lookupLoading, setLookupLoading] = useState(false)
   const [access, setAccess] = useState('read')
   const [accessMessage, setAccessMessage] = useState('')
   const [name, setName] = useState(document.name)
@@ -35,7 +38,7 @@ function DocumentActions({ document, owned, onChanged }) {
   const [description, setDescription] = useState(document.description || '')
   const [working, setWorking] = useState(false)
   const [error, setError] = useState('')
-  const validAccountId = /^[a-f\d]{24}$/i.test(accountId.trim())
+  const validEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(recipientEmail.trim())
 
   async function handleDownload() {
     setWorking(true)
@@ -84,13 +87,16 @@ function DocumentActions({ document, owned, onChanged }) {
 
   async function handleGrant(event) {
     event.preventDefault()
+    if (!recipient) {
+      setError('Look up an active account by email before granting access.')
+      return
+    }
     setWorking(true)
     setError('')
     setAccessMessage('')
     try {
-      await grantDocumentPermission(document.id, accountId.trim(), access)
-      setAccessMessage(`The backend confirmed ${access} access for this account.`)
-      setAccountId('')
+      await grantDocumentPermission(document.id, recipient.id, access)
+      setAccessMessage(`The backend confirmed ${access} access for ${recipient.email}.`)
     } catch (requestError) {
       setError(requestError.response?.data?.error || 'The backend did not confirm the access grant.')
     } finally {
@@ -98,14 +104,36 @@ function DocumentActions({ document, owned, onChanged }) {
     }
   }
 
+  async function handleLookup() {
+    const normalizedEmail = recipientEmail.trim().toLowerCase()
+    setError('')
+    setAccessMessage('')
+    setRecipient(null)
+    if (!validEmail) {
+      setError('Enter a valid recipient email address.')
+      return
+    }
+    setLookupLoading(true)
+    try {
+      setRecipient(await lookupUserByEmail(normalizedEmail))
+    } catch (requestError) {
+      setError(requestError.response?.data?.error || 'Account lookup failed. Please try again.')
+    } finally {
+      setLookupLoading(false)
+    }
+  }
+
   async function handleRevoke() {
+    if (!recipient) {
+      setError('Look up the recipient by email before revoking access.')
+      return
+    }
     setWorking(true)
     setError('')
     setAccessMessage('')
     try {
-      await revokeDocumentPermission(document.id, accountId.trim())
-      setAccessMessage('The backend confirmed access was revoked.')
-      setAccountId('')
+      await revokeDocumentPermission(document.id, recipient.id)
+      setAccessMessage(`The backend confirmed access was revoked for ${recipient.email}.`)
       setConfirmRevoke(false)
     } catch (requestError) {
       setError(requestError.response?.data?.error || 'The backend did not confirm the access revocation.')
@@ -123,7 +151,7 @@ function DocumentActions({ document, owned, onChanged }) {
         <div className="action-menu">
           <button onClick={handleDownload} disabled={working}><Download size={15} />Download</button>
           <button onClick={() => { setEdit(true); setOpen(false) }}><Pencil size={15} />Edit details</button>
-          {owned && <button onClick={() => { setManageAccess(true); setOpen(false); setError(''); setAccessMessage('') }}><FileText size={15} />Manage access</button>}
+          {owned && <button onClick={() => { setManageAccess(true); setOpen(false); setRecipientEmail(''); setRecipient(null); setError(''); setAccessMessage('') }}><FileText size={15} />Manage access</button>}
           {owned && <button className="action-danger" onClick={() => { setConfirmDelete(true); setOpen(false) }}><Trash2 size={15} />Delete</button>}
         </div>
       )}
@@ -147,21 +175,29 @@ function DocumentActions({ document, owned, onChanged }) {
         <div className="dialog-backdrop">
           <form className="confirm-dialog document-edit-form access-form" role="dialog" aria-modal="true" aria-labelledby={`access-title-${document.id}`} onSubmit={handleGrant}>
             <h2 id={`access-title-${document.id}`}>Manage document access</h2>
-            <p>Access changes are enforced by the backend. Current grants are not returned by the API, and there is no account lookup endpoint.</p>
-            <label>Recipient account ID<input required minLength="24" maxLength="24" pattern="[a-fA-F0-9]{24}" value={accountId} onChange={(event) => setAccountId(event.target.value)} placeholder="24-character account ID" /></label>
+            <p>Look up an active account by email to share this document. Only you, as the owner, can change its access.</p>
+            <label>Recipient email
+              <span className="recipient-lookup-field">
+                <input required type="email" maxLength="254" value={recipientEmail} onChange={(event) => { setRecipientEmail(event.target.value); setRecipient(null); setAccessMessage(''); setError('') }} placeholder="name@example.com" autoComplete="email" />
+                <button type="button" className="button button-secondary" disabled={working || lookupLoading || !recipientEmail.trim()} onClick={handleLookup}>
+                  {lookupLoading ? 'Looking up…' : 'Find account'}
+                </button>
+              </span>
+            </label>
+            {recipient && <p className="recipient-lookup-result" role="status"><strong>{recipient.name}</strong><span>{recipient.email}</span></p>}
             <label>Access level<select value={access} onChange={(event) => setAccess(event.target.value)}><option value="read">Read</option><option value="edit">Edit</option></select></label>
             {accessMessage && <p className="form-notice" role="status">{accessMessage}</p>}
             {error && <p className="form-error" role="alert">{error}</p>}
             <div className="dialog-actions access-dialog-actions">
-              <button type="button" className="button button-secondary" disabled={working} onClick={() => setManageAccess(false)}>Close</button>
-              <button type="button" className="button button-secondary" disabled={working || !validAccountId} onClick={() => setConfirmRevoke(true)}>Revoke access</button>
-              <button className="button button-primary" disabled={working}>{working ? 'Saving…' : 'Grant access'}</button>
+              <button type="button" className="button button-secondary" disabled={working || lookupLoading} onClick={() => setManageAccess(false)}>Close</button>
+              <button type="button" className="button button-secondary" disabled={working || lookupLoading || !recipient} onClick={() => setConfirmRevoke(true)}>Revoke access</button>
+              <button className="button button-primary" disabled={working || lookupLoading || !recipient}>{working ? 'Saving…' : 'Grant access'}</button>
             </div>
           </form>
         </div>
       )}
       {confirmDelete && <ConfirmDialog title="Delete document?" message={`“${document.name}” will be permanently deleted.`} confirmLabel="Delete document" busy={working} onConfirm={handleDelete} onCancel={() => setConfirmDelete(false)} />}
-      {confirmRevoke && <ConfirmDialog title="Revoke document access?" message={`Revoke ${accountId.trim()}'s access to “${document.name}”?`} confirmLabel="Revoke access" busy={working} onConfirm={handleRevoke} onCancel={() => setConfirmRevoke(false)} />}
+      {confirmRevoke && <ConfirmDialog title="Revoke document access?" message={`Revoke ${recipient?.email || 'this account'}'s access to “${document.name}”?`} confirmLabel="Revoke access" busy={working} onConfirm={handleRevoke} onCancel={() => setConfirmRevoke(false)} />}
     </div>
   )
 }

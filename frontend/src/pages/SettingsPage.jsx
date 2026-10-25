@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Bell, Database, LockKeyhole, UserRound, ShieldCheck, LogOut } from 'lucide-react'
+import { Bell, Check, Copy, Database, LockKeyhole, UserRound, ShieldCheck, LogOut } from 'lucide-react'
 import { useAuth } from '../context/useAuth.js'
 
 const tabs = [
@@ -12,6 +12,20 @@ const tabs = [
 export default function SettingsPage() {
   const { user } = useAuth()
   const [tab, setTab] = useState('profile')
+  const [copyState, setCopyState] = useState('')
+
+  async function copyAccountId() {
+    setCopyState('')
+    try {
+      if (!navigator.clipboard?.writeText) {
+        throw new Error('Clipboard unavailable')
+      }
+      await navigator.clipboard.writeText(user.id)
+      setCopyState('copied')
+    } catch {
+      setCopyState('error')
+    }
+  }
 
   return (
     <main className="page settings-page">
@@ -30,6 +44,17 @@ export default function SettingsPage() {
                   <label>Email address<input readOnly value={user.email || ''} /></label>
                   <label>Account role<input readOnly value={user.role || ''} /></label>
                   <label>Account status<input readOnly value={user.status || ''} /></label>
+                  <label className="settings-account-id-field">Account ID
+                    <span className="settings-account-id">
+                      <input readOnly value={user.id || ''} aria-label="Account ID" />
+                      <button className="button button-secondary" type="button" onClick={copyAccountId} disabled={!user.id}>
+                        {copyState === 'copied' ? <Check size={14} /> : <Copy size={14} />}
+                        {copyState === 'copied' ? 'Copied' : 'Copy'}
+                      </button>
+                    </span>
+                    {copyState === 'error' && <small className="form-error" role="alert">Could not copy the account ID. Select and copy it manually.</small>}
+                    {copyState === 'copied' && <small className="settings-copy-success" role="status">Account ID copied.</small>}
+                  </label>
                 </div>
                 <p className="settings-unavailable">Profile editing is not available: the backend has no profile-update endpoint.</p>
               </section>

@@ -215,6 +215,86 @@ describe('Authentication API', () => {
     expect(response.body.user.passwordHash).toBeUndefined();
   });
 
+  it('looks up an active recipient by exact email and returns only minimum details', async () => {
+    const recipientId = '64b000000000000000000002';
+    users.push(
+      makeUser({ ...registration, passwordHash: 'owner-hash' }),
+      makeUser(
+        {
+          name: 'Recipient User',
+          email: 'recipient@example.com',
+          passwordHash: 'recipient-hash',
+          role: 'admin',
+        },
+        recipientId,
+      ),
+    );
+
+    const response = await request(app)
+      .get('/api/users/lookup')
+      .query({ email: '  RECIPIENT@example.com  ' })
+      .set('Authorization', `Bearer ${tokenFor(userId)}`);
+
+    expect(response.status).toBe(200);
+    expect(response.body).toEqual({
+      user: {
+        id: recipientId,
+        name: 'Recipient User',
+        email: 'recipient@example.com',
+      },
+    });
+    expect(Object.keys(response.body.user).sort()).toEqual([
+      'email',
+      'id',
+      'name',
+    ]);
+    expect(User.findOne).toHaveBeenCalledWith({
+      email: 'recipient@example.com',
+      status: 'active',
+      _id: { $ne: userId },
+    });
+    expect(User.findOne.mock.results.at(-1).value.select).toHaveBeenCalledWith(
+      '_id name email',
+    );
+  });
+
+  it('requires authentication for recipient lookup', async () => {
+    const response = await request(app)
+      .get('/api/users/lookup')
+      .query({ email: 'recipient@example.com' });
+
+    expect(response.status).toBe(401);
+    expect(response.body).toEqual({ error: 'Authentication required' });
+    expect(User.findOne).not.toHaveBeenCalled();
+  });
+
+  it('returns a clear not-found response for nonexistent recipients', async () => {
+    users.push(makeUser({ ...registration, passwordHash: 'owner-hash' }));
+
+    const response = await request(app)
+      .get('/api/users/lookup')
+      .query({ email: 'missing@example.com' })
+      .set('Authorization', `Bearer ${tokenFor(userId)}`);
+
+    expect(response.status).toBe(404);
+    expect(response.body).toEqual({
+      error: 'No active account found for that email',
+    });
+  });
+
+  it('rejects malformed recipient lookup emails', async () => {
+    users.push(makeUser({ ...registration, passwordHash: 'owner-hash' }));
+
+    const response = await request(app)
+      .get('/api/users/lookup')
+      .query({ email: 'not-an-email' })
+      .set('Authorization', `Bearer ${tokenFor(userId)}`);
+
+    expect(response.status).toBe(400);
+    expect(response.body).toEqual({ error: 'Enter a valid email address' });
+    expect(User.findOne).not.toHaveBeenCalled();
+  });
+
   it('rejects invalid bearer tokens on /me', async () => {
     const response = await request(app)
       .get('/api/auth/me')

@@ -24,6 +24,9 @@ share `.env`. Set `JWT_SECRET` to a private random value of at least 32 bytes.
 Do not use the example file as a source of production secrets. The application
 fails to start if MongoDB is unavailable; authentication APIs return a safe
 `503` if the signing secret is missing or too short.
+Startup failures identify whether connection or index initialization failed
+and may include a sanitized error code. Connection strings and error messages
+are not logged; TLS verification is always enabled.
 
 Start in development mode:
 
@@ -77,7 +80,9 @@ authorization.
 Document APIs are mounted at `/api/documents`. Uploads accept PDF, PNG, or JPEG
 files up to 5 MiB. The private storage directory defaults to
 `backend/private-uploads` and is not mounted as static content. See [API.md](./API.md)
-for routes and authorization requirements.
+for routes and authorization requirements. Authenticated users can look up an
+active recipient by exact email through the rate-limited `/api/users/lookup`
+endpoint. Only document owners can grant or revoke that document's access.
 
 Registration and login require MongoDB to be reachable. Never send secrets in
 chat or commit `.env`.
