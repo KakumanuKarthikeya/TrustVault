@@ -104,6 +104,44 @@ does not provide a user directory or partial-match search. Account IDs are
 returned only to authenticated callers because the permission API requires the
 recipient ID. Lookup is rate-limited to reduce account enumeration.
 
+## Administrator APIs
+
+Administrator APIs require an authenticated user whose current database role
+is `admin`. Client-supplied role claims are ignored. User responses never
+include passwords, hashes, tokens, or database credentials.
+
+### `GET /api/admin/dashboard`
+
+Returns total users, active users, total documents, and the number of audit
+events in the last seven days, plus the five newest events from that period.
+The event response contains the same limited fields as administrator audit
+history.
+
+### `GET /api/admin/users?page=1&limit=20`
+
+Returns a page of users ordered newest first. `page` and `limit` must be
+positive integers; the limit defaults to 20 and is capped at 100.
+
+- **Success (`200`):** `{"users":[{"id":"...","name":"...","email":"...","role":"owner","status":"active","createdAt":"..."}],"pagination":{"page":1,"limit":20,"total":1,"pages":1}}`.
+- **Invalid pagination (`400`):** `{"error":"Invalid user pagination"}`.
+
+### `PATCH /api/admin/users/:userId/status`
+
+Enables or disables a non-admin account.
+
+- **Input JSON:** `{"status":"disabled"}` or `{"status":"active"}`.
+- **Success (`200`):** Returns only the target account ID, name, email, role,
+  and status.
+- **Errors:** `400` malformed ID, invalid status, or self-change; `401`
+  unauthenticated; `403` non-admin or attempt to change an administrator;
+  `404` account not found.
+
+Administrator accounts and the current administrator cannot be disabled
+through this endpoint. Roles are not changed; initial administrator promotion
+continues to use the existing one-time bootstrap procedure. Disabling an
+account makes subsequent authentication fail because the authentication
+middleware checks current database status on every request.
+
 ## Documents
 
 All document endpoints require `Authorization: Bearer <access-token>`.

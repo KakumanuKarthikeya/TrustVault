@@ -1,17 +1,16 @@
 import { useState } from 'react'
 import { NavLink } from 'react-router-dom'
 import {
-  FileText, Files, LayoutDashboard, LogOut, Settings, Share2, ShieldCheck, History,
+  FileText, Files, LayoutDashboard, LogOut, Settings, Share2, ShieldCheck, History, Users,
 } from 'lucide-react'
 import Brand from './Brand.jsx'
 import { useAuth } from '../context/useAuth.js'
 
-const navigation = [
+const baseNavigation = [
   { to: '/', label: 'Dashboard', icon: LayoutDashboard, end: true },
   { to: '/documents', label: 'All Documents', icon: Files },
   { to: '/my-documents', label: 'My Documents', icon: FileText },
   { to: '/shared', label: 'Shared With Me', icon: Share2 },
-  { to: '/audit', label: 'Audit History', icon: History },
   { to: '/settings', label: 'Settings', icon: Settings },
 ]
 
@@ -19,6 +18,15 @@ export default function Sidebar({ open, onClose }) {
   const { user, logout } = useAuth()
   const [logoutError, setLogoutError] = useState('')
   const [loggingOut, setLoggingOut] = useState(false)
+  const navigation = user?.role === 'admin'
+    ? [
+        ...baseNavigation.slice(0, 4),
+        { to: '/admin', label: 'Admin Dashboard', icon: LayoutDashboard },
+        { to: '/admin/users', label: 'User Management', icon: Users },
+        { to: '/audit', label: 'Audit History', icon: History },
+        baseNavigation[4],
+      ]
+    : baseNavigation
 
   async function handleLogout() {
     setLoggingOut(true)

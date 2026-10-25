@@ -55,7 +55,13 @@ const auditLogSchema = new mongoose.Schema(
         'auth.login.failed',
         'auth.logout',
         'auth.admin.bootstrap',
+        'auth.user.status',
+        'account_status_changed',
       ],
+    },
+    accountStatus: {
+      type: String,
+      enum: ['active', 'disabled'],
       required: true,
       immutable: true,
     },

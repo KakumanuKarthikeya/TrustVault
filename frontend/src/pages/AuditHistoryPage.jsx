@@ -25,30 +25,39 @@ export default function AuditHistoryPage() {
   useEffect(() => {
     if (!isAdmin) return
     let active = true
-    listAuditLogs()
+    listAuditLogs({ action, from, to })
       .then((logs) => { if (active) setEntries(logs) })
       .catch((requestError) => { if (active) setError(requestError.response?.data?.error || 'Could not load audit history.') })
       .finally(() => { if (active) setLoading(false) })
     return () => { active = false }
-  }, [isAdmin, retry])
+  }, [isAdmin, retry, action, from, to])
 
-  const actions = [...new Set(entries.map((entry) => entry.action))]
+  const actions = [...new Set([
+    ...entries.map((entry) => entry.action),
+    'document.upload', 'document.download', 'document.update', 'document.delete',
+    'permission.grant', 'permission.revoke', 'document.access.denied',
+    'permission.change.denied', 'auth.login.failed', 'auth.logout',
+    'auth.admin.bootstrap', 'auth.user.status',
+  ])]
   const filtered = useMemo(() => entries.filter((entry) => {
     const text = `${entry.actorUserId || ''} ${entry.documentId || ''} ${entry.action || ''}`.toLowerCase()
-    const timestamp = new Date(entry.timestamp).getTime()
-    const afterFrom = !from || timestamp >= new Date(`${from}T00:00:00`).getTime()
-    const beforeTo = !to || timestamp <= new Date(`${to}T23:59:59.999`).getTime()
     return (!query || text.includes(query.toLowerCase())) &&
       (!action || entry.action === action) &&
-      (!outcome || entry.outcome === outcome) &&
-      afterFrom && beforeTo
-  }), [entries, query, action, outcome, from, to])
+      (!outcome || entry.outcome === outcome)
+  }), [entries, query, action, outcome])
 
   const pageCount = Math.max(1, Math.ceil(filtered.length / pageSize))
   const displayedPage = Math.min(page, pageCount)
   const shown = filtered.slice((displayedPage - 1) * pageSize, displayedPage * pageSize)
 
   function updateFilter(setter, value) {
+    setter(value)
+    setPage(1)
+  }
+
+  function updateRemoteFilter(setter, value) {
+    setError('')
+    setLoading(true)
     setter(value)
     setPage(1)
   }
@@ -69,10 +78,10 @@ export default function AuditHistoryPage() {
         <>
           <form className="filters-panel audit-filters" onSubmit={(event) => event.preventDefault()}>
             <label className="filter-search"><Search size={17} /><input aria-label="Search actor or document" placeholder="Search actor or document…" value={query} onChange={(event) => updateFilter(setQuery, event.target.value)} /></label>
-            <label className="filter-select"><span className="visually-hidden">Action</span><select value={action} onChange={(event) => updateFilter(setAction, event.target.value)}><option value="">All actions</option>{actions.map((value) => <option key={value} value={value}>{actionLabel(value)}</option>)}</select></label>
+            <label className="filter-select"><span className="visually-hidden">Action</span><select value={action} onChange={(event) => updateRemoteFilter(setAction, event.target.value)}><option value="">All actions</option>{actions.map((value) => <option key={value} value={value}>{actionLabel(value)}</option>)}</select></label>
             <label className="filter-select"><span className="visually-hidden">Outcome</span><select value={outcome} onChange={(event) => updateFilter(setOutcome, event.target.value)}><option value="">All outcomes</option><option value="success">Success</option><option value="denied">Denied</option></select></label>
-            <label className="filter-date"><span>From</span><input type="date" aria-label="From date" value={from} onChange={(event) => updateFilter(setFrom, event.target.value)} /></label>
-            <label className="filter-date"><span>To</span><input type="date" aria-label="To date" value={to} onChange={(event) => updateFilter(setTo, event.target.value)} /></label>
+            <label className="filter-date"><span>From</span><input type="date" aria-label="From date" value={from} onChange={(event) => updateRemoteFilter(setFrom, event.target.value)} /></label>
+            <label className="filter-date"><span>To</span><input type="date" aria-label="To date" value={to} onChange={(event) => updateRemoteFilter(setTo, event.target.value)} /></label>
           </form>
           <section className="panel audit-table-panel">
             {shown.length === 0 ? <div className="state-view"><LockKeyhole size={25} /><strong>No matching audit events</strong><span>Adjust your filters or search terms.</span></div> : (

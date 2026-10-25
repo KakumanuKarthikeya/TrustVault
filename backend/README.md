@@ -84,6 +84,11 @@ for routes and authorization requirements. Authenticated users can look up an
 active recipient by exact email through the rate-limited `/api/users/lookup`
 endpoint. Only document owners can grant or revoke that document's access.
 
+The `/admin` dashboard and user-management APIs require the current database
+role to be `admin`. Admins can review sanitized account records and disable or
+reactivate non-admin accounts; admin accounts cannot be disabled through the
+management API. Audit history supports server-side action and date filters.
+
 Registration and login require MongoDB to be reachable. Never send secrets in
 chat or commit `.env`.
 

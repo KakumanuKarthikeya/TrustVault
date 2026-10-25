@@ -8,6 +8,8 @@ import DocumentsPage from './pages/DocumentsPage.jsx'
 import UploadPage from './pages/UploadPage.jsx'
 import AuditHistoryPage from './pages/AuditHistoryPage.jsx'
 import SettingsPage from './pages/SettingsPage.jsx'
+import AdminDashboardPage from './pages/AdminDashboardPage.jsx'
+import AdminUsersPage from './pages/AdminUsersPage.jsx'
 import { ErrorState, LoadingState } from './components/StateViews.jsx'
 
 function ProtectedShell() {
@@ -32,6 +34,14 @@ function PublicOnly({ children }) {
   return user ? <Navigate to="/" replace /> : children
 }
 
+function AdminOnly({ children }) {
+  const { user, loading } = useAuth()
+  if (loading) return <LoadingState label="Checking administrator access…" />
+  if (!user) return <Navigate to="/login" replace />
+  if (user.role !== 'admin') return <Navigate to="/" replace />
+  return children
+}
+
 function App() {
   return (
     <Routes>
@@ -43,7 +53,9 @@ function App() {
         <Route path="my-documents" element={<DocumentsPage key="owned" scope="owned" />} />
         <Route path="shared" element={<DocumentsPage key="shared" scope="shared" />} />
         <Route path="upload" element={<UploadPage />} />
-        <Route path="audit" element={<AuditHistoryPage />} />
+        <Route path="audit" element={<AdminOnly><AuditHistoryPage /></AdminOnly>} />
+        <Route path="admin" element={<AdminOnly><AdminDashboardPage /></AdminOnly>} />
+        <Route path="admin/users" element={<AdminOnly><AdminUsersPage /></AdminOnly>} />
         <Route path="settings" element={<SettingsPage />} />
         <Route path="*" element={<main className="page"><h1>Page not found</h1></main>} />
       </Route>

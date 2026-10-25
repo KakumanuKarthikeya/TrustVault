@@ -128,4 +128,37 @@ describe('Audit history API', () => {
     expect(AuditLog.create).not.toHaveBeenCalled();
     expect(AuditLog.find).not.toHaveBeenCalled();
   });
+
+  it('filters audit records by action and inclusive UTC date range', async () => {
+    const query = mockAuditQuery([]);
+    const response = await request(app)
+      .get('/api/audit-logs?action=auth.user.status&from=2026-10-20&to=2026-10-21&limit=100')
+      .set('Authorization', `Bearer ${tokenFor(ADMIN_ID)}`);
+
+    expect(response.status).toBe(200);
+    expect(AuditLog.find).toHaveBeenCalledWith({
+      action: 'auth.user.status',
+      timestamp: {
+        $gte: new Date('2026-10-20T00:00:00.000Z'),
+        $lt: new Date('2026-10-22T00:00:00.000Z'),
+      },
+    });
+    expect(query.limit).toHaveBeenCalledWith(100);
+  });
+
+  it('rejects invalid audit action and date filters', async () => {
+    const authorization = `Bearer ${tokenFor(ADMIN_ID)}`;
+    const action = await request(app)
+      .get('/api/audit-logs?action=unknown')
+      .set('Authorization', authorization);
+    const date = await request(app)
+      .get('/api/audit-logs?from=2026-02-30')
+      .set('Authorization', authorization);
+
+    expect(action.status).toBe(400);
+    expect(action.body).toEqual({ error: 'Invalid audit history action' });
+    expect(date.status).toBe(400);
+    expect(date.body).toEqual({ error: 'Invalid audit history date range' });
+    expect(AuditLog.find).not.toHaveBeenCalled();
+  });
 });

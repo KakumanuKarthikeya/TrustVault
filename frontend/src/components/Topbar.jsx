@@ -11,6 +11,8 @@ const routeNames = {
   '/shared': 'Shared With Me',
   '/upload': 'Upload document',
   '/audit': 'Audit history',
+  '/admin': 'Admin dashboard',
+  '/admin/users': 'User management',
   '/settings': 'Settings',
 }
 
