@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { ArrowRight, Eye, EyeOff, LockKeyhole, Mail, UserRound } from 'lucide-react'
+import { ArrowRight, Eye, EyeOff, LoaderCircle, LockKeyhole, Mail, UserRound } from 'lucide-react'
 import { Link, useNavigate } from 'react-router-dom'
 import AuthLayout from '../layouts/AuthLayout.jsx'
 import { useAuth } from '../context/useAuth.js'
@@ -70,12 +70,12 @@ export default function RegisterPage() {
   }
 
   return (
-    <AuthLayout>
+    <AuthLayout variant="register">
       <div className="auth-card auth-card-register">
-        <div className="auth-card-icon"><UserRound size={19} /></div>
+        <div className="auth-card-icon"><LockKeyhole size={19} /></div>
         <h2>Create your account</h2>
-        <p className="auth-intro">Set up your secure document workspace.</p>
-        <form className="auth-form" onSubmit={handleSubmit}>
+        <p className="auth-intro">Your secure workspace starts with a few simple steps.</p>
+        <form className="auth-form" onSubmit={handleSubmit} aria-busy={submitting}>
           <label>Full name
             <span className="input-with-icon"><UserRound size={16} /><input required autoComplete="name" maxLength="100" placeholder="Your name" value={form.name} onChange={(event) => update('name', event.target.value)} /></span>
           </label>
@@ -89,7 +89,7 @@ export default function RegisterPage() {
             <span className="input-with-icon"><LockKeyhole size={16} /><input type={showConfirm ? 'text' : 'password'} required autoComplete="new-password" value={form.confirmPassword} onChange={(event) => update('confirmPassword', event.target.value)} /><button className="password-toggle" type="button" aria-label={showConfirm ? 'Hide confirmation' : 'Show confirmation'} onClick={() => setShowConfirm((value) => !value)}>{showConfirm ? <EyeOff size={16} /> : <Eye size={16} />}</button></span>
           </label>
           {error && <p className="form-error" role="alert">{error}</p>}
-          <button className="button button-primary auth-submit" disabled={submitting}>{submitting ? 'Creating account…' : <>Create account <ArrowRight size={17} /></>}</button>
+          <button className="button button-primary auth-submit" disabled={submitting}>{submitting ? <>Creating account... <LoaderCircle className="spin" size={17} /></> : <>Create account <ArrowRight size={17} /></>}</button>
         </form>
         <p className="auth-switch">Already have an account? <Link to="/login">Sign in</Link></p>
       </div>

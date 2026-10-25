@@ -56,13 +56,15 @@ export function AuthProvider({ children }) {
     return data.user
   }, [])
 
-  const login = useCallback(async (credentials) => {
+  const login = useCallback(async (credentials, { deferSession = false } = {}) => {
     const { data } = await loginRequest(credentials)
     if (data.requiresTwoFactor) return data
-    return acceptSession(data)
+    return deferSession ? data : acceptSession(data)
   }, [acceptSession])
 
-  const completeTwoFactorLogin = useCallback((data) => acceptSession(data), [acceptSession])
+  const completeTwoFactorLogin = useCallback((data, { deferSession = false } = {}) => (
+    deferSession ? data : acceptSession(data)
+  ), [acceptSession])
 
   const register = useCallback(async (details) => {
     const { data } = await registerRequest(details)
@@ -91,13 +93,14 @@ export function AuthProvider({ children }) {
     loading,
     bootstrapError,
     login,
+    completeLogin: acceptSession,
     completeTwoFactorLogin,
     register,
     logout,
     replaceAccessToken,
     clearSession,
     retryBootstrap,
-  }), [token, user, loading, bootstrapError, login, completeTwoFactorLogin, register, logout, replaceAccessToken, clearSession, retryBootstrap])
+  }), [token, user, loading, bootstrapError, login, completeTwoFactorLogin, register, logout, replaceAccessToken, clearSession, retryBootstrap, acceptSession])
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
 }

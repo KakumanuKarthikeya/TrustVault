@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { ArrowRight, Eye, EyeOff, LockKeyhole, LoaderCircle, Mail, ShieldCheck, KeyRound } from 'lucide-react'
+import { ArrowRight, Check, Eye, EyeOff, LockKeyhole, Mail, ShieldCheck, KeyRound } from 'lucide-react'
 import { Link, useNavigate } from 'react-router-dom'
 import AuthLayout from '../layouts/AuthLayout.jsx'
 import { useAuth } from '../context/useAuth.js'
@@ -25,7 +25,7 @@ function apiError(error) {
 }
 
 export default function LoginPage() {
-  const { login, completeTwoFactorLogin } = useAuth()
+  const { login, completeLogin, completeTwoFactorLogin } = useAuth()
   const navigate = useNavigate()
   const [email, setEmail] = useState(() => localStorage.getItem('trustvault_remembered_email') || '')
   const [password, setPassword] = useState('')
@@ -34,36 +34,45 @@ export default function LoginPage() {
   const [message, setMessage] = useState('')
   const [error, setError] = useState('')
   const [submitting, setSubmitting] = useState(false)
+  const [authState, setAuthState] = useState('idle')
   const [challengeToken, setChallengeToken] = useState('')
   const [twoFactorCode, setTwoFactorCode] = useState('')
 
   async function handleSubmit(event) {
     event.preventDefault()
     setSubmitting(true)
+    setAuthState('loading')
     setError('')
     setMessage('')
     try {
       const normalizedEmail = email.trim()
+      let authenticatedData
       if (challengeToken) {
         const { data } = await verifyTwoFactorLogin({
           challengeToken,
           code: twoFactorCode,
         })
-        completeTwoFactorLogin(data)
+        authenticatedData = completeTwoFactorLogin(data, { deferSession: true })
       } else {
-        const result = await login({ email: normalizedEmail, password })
+        const result = await login({ email: normalizedEmail, password }, { deferSession: true })
         if (result?.requiresTwoFactor) {
           setChallengeToken(result.challengeToken)
           setPassword('')
           setMessage('Enter the 6-digit code from your authenticator app.')
+          setAuthState('idle')
           setSubmitting(false)
           return
         }
+        authenticatedData = result
       }
       if (rememberMe) localStorage.setItem('trustvault_remembered_email', normalizedEmail)
       else localStorage.removeItem('trustvault_remembered_email')
+      setAuthState('success')
+      await new Promise((resolve) => window.setTimeout(resolve, 480))
+      completeLogin(authenticatedData)
       navigate('/', { replace: true })
     } catch (requestError) {
+      setAuthState('idle')
       setError(
         challengeToken
           ? requestError.response?.data?.error || 'The authenticator code could not be verified.'
@@ -106,7 +115,24 @@ export default function LoginPage() {
           </div>}
           {message && <p className="form-notice" role="status">{message}</p>}
           {error && <p className="form-error" role="alert">{error}</p>}
-          <button className="button button-primary auth-submit" disabled={submitting}>{submitting ? <>Verifying… <LoaderCircle className="auth-loading-icon" size={17} /></> : <>{challengeToken ? 'Verify and continue' : 'Sign in'} <ArrowRight size={17} /></>}</button>
+          <button className={`button button-primary auth-submit auth-submit-${authState}`} disabled={submitting}>
+            {submitting ? (
+              <>
+                <span>{authState === 'success' ? 'Authenticated' : 'Authenticating...'}</span>
+                {authState === 'success' ? (
+                  <Check className="login-success-check" size={17} aria-hidden="true" />
+                ) : (
+                  <svg className="login-lock-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                    <path className="login-lock-shackle" d="M7 10V7a5 5 0 0 1 10 0v3" />
+                    <rect className="login-lock-body" x="4.5" y="10" width="15" height="11" rx="2.5" />
+                    <path className="login-lock-keyhole" d="M12 14v3" />
+                  </svg>
+                )}
+              </>
+            ) : (
+              <>{challengeToken ? 'Verify and continue' : 'Sign in'} <ArrowRight size={17} /></>
+            )}
+          </button>
         </form>
         {challengeToken && <button className="text-link button-link" type="button" onClick={returnToCredentials}>Back to sign in</button>}
         <div className="auth-security-note"><span aria-hidden="true" /><ShieldCheck size={16} /><span>Your documents remain protected by access controls.</span></div>
