@@ -22,6 +22,42 @@ describe('GET /health', () => {
     });
   });
 
+  describe('GET /api/health', () => {
+    beforeEach(async () => {
+      await mongoose.disconnect();
+    });
+
+    afterAll(async () => {
+      await mongoose.disconnect();
+    });
+
+    it('reports the server is running and MongoDB is disconnected', async () => {
+      const response = await request(app).get('/api/health');
+
+      expect(response.status).toBe(200);
+      expect(response.body).toEqual({
+        status: 'running',
+        database: 'disconnected',
+      });
+    });
+
+    it('reports the database as connected when Mongoose is connected', async () => {
+      const originalReadyState = mongoose.connection.readyState;
+      mongoose.connection.readyState = 1;
+      try {
+        const response = await request(app).get('/api/health');
+
+        expect(response.status).toBe(200);
+        expect(response.body).toEqual({
+          status: 'running',
+          database: 'connected',
+        });
+      } finally {
+        mongoose.connection.readyState = originalReadyState;
+      }
+    });
+  });
+
   it.each([
     ['POST', '/api/auth/login', { email: 'user@example.com', password: 'password' }],
     ['GET', '/api/documents', null],

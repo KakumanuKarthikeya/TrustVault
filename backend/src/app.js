@@ -34,6 +34,13 @@ app.get('/health', (_request, response) => {
   });
 });
 
+app.get('/api/health', (_request, response) => {
+  response.json({
+    status: 'running',
+    database: mongoose.connection.readyState === 1 ? 'connected' : 'disconnected',
+  });
+});
+
 app.use('/api', (_request, response, next) => {
   if (mongoose.connection.readyState !== 1) {
     return response.status(503).json({ error: 'Database unavailable' });
