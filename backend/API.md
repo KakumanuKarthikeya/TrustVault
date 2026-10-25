@@ -51,6 +51,37 @@ Authenticates a user and returns a short-lived access token.
 Unknown users, wrong passwords, and disabled accounts receive the same
 credential error. Password hashes are never returned.
 
+### `POST /api/auth/forgot-password`
+
+Requests a password-reset email for an active account.
+
+- **Authentication:** None.
+- **Rate limit:** 10 requests per IP in 15 minutes.
+- **Input JSON:** `{"email":"taylor@example.com"}`.
+- **Accepted (`202`):** `{"message":"If an active account exists for that email, a password reset link has been sent."}` for both existing and unknown accounts.
+- **Email configuration missing (`503`):** `{"error":"Password reset email is not configured"}`.
+- **Invalid input (`400`):** `{"error":"Invalid request body"}`.
+
+Configure `FRONTEND_URL`, `RESEND_API_KEY`, and `EMAIL_FROM` in the backend
+environment. The `EMAIL_FROM` domain must be verified in Resend. The server
+does not return or log reset tokens.
+
+### `POST /api/auth/reset-password`
+
+Consumes a reset token and updates the account password.
+
+- **Authentication:** None; possession of the emailed token is required.
+- **Rate limit:** 10 attempts per IP in 15 minutes.
+- **Input JSON:** `{"token":"<reset-token>","password":"AtLeast12Characters"}`.
+- **Success (`200`):** `{"message":"Password reset successfully"}`.
+- **Invalid, expired, or already-used token (`400`):** `{"error":"Invalid or expired password reset link"}`.
+- **Invalid input (`400`):** `{"error":"Invalid request body"}`.
+
+Tokens contain 256 bits of random entropy, expire after 30 minutes, and are
+stored only as SHA-256 hashes. Each token can be consumed once. A successful
+reset increments the account's password version, invalidating previously
+issued access tokens.
+
 ### `GET /api/auth/me`
 
 Returns the current authenticated account.

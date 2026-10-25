@@ -1,6 +1,7 @@
 const mongoose = require('mongoose');
 const { connectDatabase } = require('../config/database');
 const Permission = require('../models/Permission');
+const PasswordResetToken = require('../models/PasswordResetToken');
 const TokenRevocation = require('../models/TokenRevocation');
 
 describe('connectDatabase', () => {
@@ -14,7 +15,7 @@ describe('connectDatabase', () => {
     );
   });
 
-  it('ensures permission uniqueness and persistent token-revocation indexes', async () => {
+  it('ensures permission, password-reset, and token-revocation indexes', async () => {
     jest.spyOn(mongoose, 'connect').mockResolvedValue(mongoose);
     const disconnect = jest
       .spyOn(mongoose, 'disconnect')
@@ -25,6 +26,9 @@ describe('connectDatabase', () => {
     const revocationIndexes = jest
       .spyOn(TokenRevocation, 'createIndexes')
       .mockResolvedValue([]);
+    const passwordResetIndexes = jest
+      .spyOn(PasswordResetToken, 'createIndexes')
+      .mockResolvedValue([]);
 
     await connectDatabase('mongodb://localhost/trustvault-test');
 
@@ -33,6 +37,7 @@ describe('connectDatabase', () => {
       { serverSelectionTimeoutMS: 5000 },
     );
     expect(permissionIndexes).toHaveBeenCalledTimes(1);
+    expect(passwordResetIndexes).toHaveBeenCalledTimes(1);
     expect(revocationIndexes).toHaveBeenCalledTimes(1);
     expect(disconnect).not.toHaveBeenCalled();
   });
@@ -43,6 +48,7 @@ describe('connectDatabase', () => {
       .spyOn(mongoose, 'disconnect')
       .mockResolvedValue(mongoose);
     jest.spyOn(Permission, 'createIndexes').mockResolvedValue([]);
+    jest.spyOn(PasswordResetToken, 'createIndexes').mockResolvedValue([]);
     jest
       .spyOn(TokenRevocation, 'createIndexes')
       .mockRejectedValue(new Error('index creation failed'));
@@ -65,6 +71,9 @@ describe('connectDatabase', () => {
     jest
       .spyOn(Permission, 'createIndexes')
       .mockRejectedValue(new Error('index creation failed'));
+    jest
+      .spyOn(PasswordResetToken, 'createIndexes')
+      .mockResolvedValue([]);
     jest.spyOn(TokenRevocation, 'createIndexes').mockResolvedValue([]);
 
     await expect(

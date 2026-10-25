@@ -54,6 +54,8 @@ const auditLogSchema = new mongoose.Schema(
         'permission.change.denied',
         'auth.login.failed',
         'auth.logout',
+        'auth.password_reset.requested',
+        'auth.password_reset.completed',
         'auth.admin.bootstrap',
         'auth.user.status',
         'account_status_changed',
@@ -62,7 +64,7 @@ const auditLogSchema = new mongoose.Schema(
     accountStatus: {
       type: String,
       enum: ['active', 'disabled'],
-      required: true,
+      default: null,
       immutable: true,
     },
     documentId: {

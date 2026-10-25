@@ -202,8 +202,8 @@ function DocumentActions({ document, owned, onChanged }) {
   )
 }
 
-export default function DocumentTable({ documents, currentUserId, view = 'list', onChanged }) {
-  if (documents.length === 0) return <EmptyState />
+export default function DocumentTable({ documents, currentUserId, view = 'list', onChanged, emptyMessage }) {
+  if (documents.length === 0) return <EmptyState message={emptyMessage} />
 
   return (
     <div className={view === 'grid' ? 'document-grid' : 'table-scroll'}>

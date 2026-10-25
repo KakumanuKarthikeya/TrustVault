@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { ArrowRight, Eye, EyeOff, LockKeyhole, Mail } from 'lucide-react'
+import { ArrowRight, Eye, EyeOff, LockKeyhole, LoaderCircle, Mail, ShieldCheck } from 'lucide-react'
 import { Link, useNavigate } from 'react-router-dom'
 import AuthLayout from '../layouts/AuthLayout.jsx'
 import { useAuth } from '../context/useAuth.js'
@@ -53,12 +53,12 @@ export default function LoginPage() {
   }
 
   return (
-    <AuthLayout>
+    <AuthLayout variant="login">
       <div className="auth-card">
         <div className="auth-card-icon"><LockKeyhole size={19} /></div>
         <h2>Welcome back</h2>
-        <p className="auth-intro">Sign in to continue to your secure workspace.</p>
-        <form className="auth-form" onSubmit={handleSubmit}>
+        <p className="auth-intro">Sign in to access your secure workspace.</p>
+        <form className="auth-form" onSubmit={handleSubmit} aria-busy={submitting}>
           <label>Email address
             <span className="input-with-icon"><Mail size={16} /><input type="email" autoComplete="email" required maxLength="254" placeholder="you@company.com" value={email} onChange={(event) => setEmail(event.target.value)} /></span>
           </label>
@@ -67,12 +67,13 @@ export default function LoginPage() {
           </label>
           <div className="auth-form-options">
             <label className="checkbox-label"><input type="checkbox" checked={rememberMe} onChange={(event) => setRememberMe(event.target.checked)} />Remember me</label>
-            <button className="text-link button-link" type="button" onClick={() => { setError(''); setMessage('Password reset is not available yet. Contact your workspace administrator.') }}>Forgot password?</button>
+            <Link className="text-link button-link" to="/forgot-password">Forgot password?</Link>
           </div>
           {message && <p className="form-notice" role="status">{message}</p>}
           {error && <p className="form-error" role="alert">{error}</p>}
-          <button className="button button-primary auth-submit" disabled={submitting}>{submitting ? 'Signing in…' : <>Sign in <ArrowRight size={17} /></>}</button>
+          <button className="button button-primary auth-submit" disabled={submitting}>{submitting ? <>Signing in… <LoaderCircle className="auth-loading-icon" size={17} /></> : <>Sign in <ArrowRight size={17} /></>}</button>
         </form>
+        <div className="auth-security-note"><span aria-hidden="true" /><ShieldCheck size={16} /><span>Your documents remain protected by access controls.</span></div>
         <p className="auth-switch">New to TrustVault? <Link to="/register">Create account</Link></p>
         {rememberMe && <span className="remember-note">Your email is remembered on this device. Access tokens still expire after 15 minutes.</span>}
       </div>

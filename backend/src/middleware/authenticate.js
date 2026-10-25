@@ -47,7 +47,9 @@ async function authenticate(request, response, next) {
   if (
     typeof payload.jti !== 'string' ||
     !/^[a-f0-9]{64}$/.test(payload.jti) ||
-    !Number.isInteger(payload.exp)
+    !Number.isInteger(payload.exp) ||
+    (payload.ver !== undefined &&
+      (!Number.isSafeInteger(payload.ver) || payload.ver < 0))
   ) {
     return response.status(401).json({ error: 'Authentication required' });
   }
@@ -63,7 +65,11 @@ async function authenticate(request, response, next) {
     }
 
     const user = await User.findById(payload.sub);
-    if (!user || user.status !== 'active') {
+    if (
+      !user ||
+      user.status !== 'active' ||
+      (user.passwordVersion || 0) !== (payload.ver || 0)
+    ) {
       return response.status(401).json({ error: 'Authentication required' });
     }
 

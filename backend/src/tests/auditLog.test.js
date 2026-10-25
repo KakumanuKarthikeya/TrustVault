@@ -146,6 +146,27 @@ describe('Audit history API', () => {
     expect(query.limit).toHaveBeenCalledWith(100);
   });
 
+  it('accepts password reset actions as audit filters', async () => {
+    mockAuditQuery([]);
+    const authorization = `Bearer ${tokenFor(ADMIN_ID)}`;
+
+    const requested = await request(app)
+      .get('/api/audit-logs?action=auth.password_reset.requested')
+      .set('Authorization', authorization);
+    const completed = await request(app)
+      .get('/api/audit-logs?action=auth.password_reset.completed')
+      .set('Authorization', authorization);
+
+    expect(requested.status).toBe(200);
+    expect(completed.status).toBe(200);
+    expect(AuditLog.find).toHaveBeenNthCalledWith(1, {
+      action: 'auth.password_reset.requested',
+    });
+    expect(AuditLog.find).toHaveBeenNthCalledWith(2, {
+      action: 'auth.password_reset.completed',
+    });
+  });
+
   it('rejects invalid audit action and date filters', async () => {
     const authorization = `Bearer ${tokenFor(ADMIN_ID)}`;
     const action = await request(app)

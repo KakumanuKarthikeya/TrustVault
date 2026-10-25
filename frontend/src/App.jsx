@@ -3,6 +3,8 @@ import { useAuth } from './context/useAuth.js'
 import AppLayout from './layouts/AppLayout.jsx'
 import LoginPage from './pages/LoginPage.jsx'
 import RegisterPage from './pages/RegisterPage.jsx'
+import ForgotPasswordPage from './pages/ForgotPasswordPage.jsx'
+import ResetPasswordPage from './pages/ResetPasswordPage.jsx'
 import DashboardPage from './pages/DashboardPage.jsx'
 import DocumentsPage from './pages/DocumentsPage.jsx'
 import UploadPage from './pages/UploadPage.jsx'
@@ -47,6 +49,8 @@ function App() {
     <Routes>
       <Route path="/login" element={<PublicOnly><LoginPage /></PublicOnly>} />
       <Route path="/register" element={<PublicOnly><RegisterPage /></PublicOnly>} />
+      <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+      <Route path="/reset-password" element={<ResetPasswordPage />} />
       <Route element={<ProtectedShell />}>
         <Route index element={<DashboardPage />} />
         <Route path="documents" element={<DocumentsPage key="all" scope="all" />} />

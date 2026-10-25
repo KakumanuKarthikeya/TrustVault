@@ -1,5 +1,6 @@
 const mongoose = require('mongoose');
 const Permission = require('../models/Permission');
+const PasswordResetToken = require('../models/PasswordResetToken');
 const TokenRevocation = require('../models/TokenRevocation');
 
 async function connectDatabase(uri = process.env.MONGODB_URI) {
@@ -10,6 +11,7 @@ async function connectDatabase(uri = process.env.MONGODB_URI) {
   await mongoose.connect(uri, { serverSelectionTimeoutMS: 5000 });
   try {
     await Permission.createIndexes();
+    await PasswordResetToken.createIndexes();
     await TokenRevocation.createIndexes();
   } catch (error) {
     try {

@@ -13,6 +13,8 @@ const AUDIT_ACTIONS = new Set([
   'permission.change.denied',
   'auth.login.failed',
   'auth.logout',
+  'auth.password_reset.requested',
+  'auth.password_reset.completed',
   'auth.admin.bootstrap',
   'auth.user.status',
 ]);

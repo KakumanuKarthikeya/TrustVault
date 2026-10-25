@@ -101,6 +101,27 @@ chat or commit `.env`.
 | `CORS_ORIGINS` | Comma-separated exact browser origins allowed by CORS; empty disables cross-origin browser access |
 | `JWT_SECRET` | Private signing key; authentication requires at least 32 bytes |
 | `PRIVATE_UPLOAD_DIR` | Optional private storage directory; defaults to `backend/private-uploads` and must not be inside `backend/public` |
+| `FRONTEND_URL` | Frontend origin used to build password-reset links |
+| `RESEND_API_KEY` | Resend API key; required to send reset emails |
+| `EMAIL_FROM` | Sender address or name/address using a domain verified in Resend |
+
+Password reset is enabled only when `FRONTEND_URL`, `RESEND_API_KEY`, and
+`EMAIL_FROM` are configured. Verify the sender's domain in Resend before
+using it; for example, `TrustVault <no-reply@your-verified-domain.example>`.
+Use an HTTPS `FRONTEND_URL` in production. Without valid email configuration,
+`POST /api/auth/forgot-password`
+returns `503` and does not create a reset token. Reset tokens are random,
+single-use, expire after 30 minutes, and only their SHA-256 hashes are stored.
+The request endpoint is limited to 10 attempts per IP in 15 minutes and the
+confirmation endpoint to 10 attempts per IP in 15 minutes; responses do not
+reveal whether an email belongs to an account.
+
+For local setup, create a Resend account, add and verify your sending domain
+in its dashboard, and create an API key with permission to send email. In
+`backend/.env`, set `RESEND_API_KEY` to that key and `EMAIL_FROM` to an address
+on the verified domain. Set `FRONTEND_URL` to the origin where the frontend is
+running. Restart the backend after changing `.env`. Do not commit or share the
+API key; `.env.example` contains placeholders only.
 
 ## Verify against a real MongoDB database
 
@@ -113,7 +134,7 @@ connectivity. To verify a real deployment:
 2. Permit the development machine's current IP in the MongoDB network access
    policy and use a database user limited to the test database.
 3. From `backend/`, run `npm run dev`. Startup must complete database
-   connection and creation of the unique permission and token-revocation
+   connection and creation of the unique permission, password-reset, and token-revocation
    indexes before the HTTP listener starts. An index-build failure prevents
    startup.
 4. In another PowerShell window, run
