@@ -34,11 +34,80 @@ Start in development mode:
 npm run dev
 ```
 
+The development server watches `backend/.env` and restarts when it changes.
+For `npm start` or a deployed process, restart the backend after environment
+changes.
+
 Run the current tests:
 
 ```powershell
 npm test
 ```
+
+### Isolated Stage 4 MongoDB integration tests
+
+The ordinary Jest suite uses isolated fixtures and does not connect to MongoDB.
+The opt-in integration suite uses a real MongoDB database, but it is guarded
+to accept only the exact database name `trustvault_stage4_test` plus a matching
+explicit confirmation. It creates unique test-only accounts and removes only
+records belonging to the account IDs created by that run; it never drops a
+database or collection. Password-reset email delivery is mocked in this suite.
+Never point these tests at production or a database containing real user data.
+
+A dedicated local MongoDB process is preferred. From the repository root,
+create a separate data directory and run the test-only server on port 27018:
+
+```powershell
+Set-Location .\backend
+New-Item -ItemType Directory -Force .\data\trustvault-stage4
+mongod --dbpath .\data\trustvault-stage4 --port 27018 --bind_ip 127.0.0.1
+```
+
+In another PowerShell terminal, configure only the dedicated test URI:
+
+```powershell
+Set-Location .\backend
+Copy-Item .env.test.example .env.test
+notepad .env.test
+```
+
+For the local test server, keep the URI pointed at
+`mongodb://127.0.0.1:27018/trustvault_stage4_test` and set
+`TRUSTVAULT_TEST_DATABASE_CONFIRM` to `trustvault_stage4_test`. Do not copy
+`MONGODB_URI` or other production/development secrets into `.env.test`.
+
+Before running tests, verify the target without displaying its URI or
+credentials:
+
+```powershell
+node -e "require('dotenv').config({path:'.env.test',quiet:true}); const {assertStage4TestDatabase}=require('./scripts/stage4TestDatabase'); console.log('Verified database name:', assertStage4TestDatabase(process.env.TRUSTVAULT_TEST_MONGODB_URI, process.env.TRUSTVAULT_TEST_DATABASE_CONFIRM))"
+```
+
+Only the fixed database name is printed. If the URI does not target the exact
+test database or the confirmation does not match, verification and test setup
+fail before connecting.
+
+Run the database-backed integration suite:
+
+```powershell
+npm run test:integration
+```
+
+This suite exercises signup and duplicate signup, valid/invalid login,
+MongoDB persistence/retrieval, protected access, owner/admin authorization,
+password change and token invalidation, TOTP enrollment and second-factor
+login, and logout revocation. It also verifies an invalid TOTP is rejected.
+The regular suite excludes the opt-in integration directory:
+
+```powershell
+npm test
+```
+
+An Atlas test database may be used instead, but it must be a separately
+provisioned, disposable database named exactly `trustvault_stage4_test`, with
+test-only credentials and restricted network access. Configure that URI only
+in the ignored `backend/.env.test`; never put credentials in source control or
+use the application's normal `.env` URI.
 
 The health endpoint is `GET http://localhost:3000/health`. It returns `200`
 with `{"status":"ok","database":"connected"}` when MongoDB is connected, and
@@ -50,9 +119,28 @@ Authentication endpoints:
 - `POST /api/auth/register` creates a regular owner account. Public
   registration rejects extra fields such as `role`; it cannot create admins.
 - `POST /api/auth/login` issues a 15-minute access token.
+- `POST /api/auth/change-password` requires the current password, hashes the
+  new password, invalidates other sessions, and returns a replacement token
+  for the current session.
+- `GET /api/auth/2fa/status`, `POST /api/auth/2fa/setup`,
+  `POST /api/auth/2fa/verify-setup`, and `POST /api/auth/2fa/disable`
+  manage authenticator-based two-factor authentication.
+- When two-factor authentication is enabled, `POST /api/auth/login` returns
+  a short-lived challenge instead of an access token. Complete it with
+  `POST /api/auth/login/verify-2fa`.
 - `POST /api/auth/logout` requires an access token and revokes only that
   session. Revocation records persist in MongoDB across server restarts.
 - `GET /api/auth/me` requires `Authorization: Bearer <token>`.
+
+TOTP-based two-factor authentication is available when
+`TOTP_ENCRYPTION_KEY` is configured. Without it, Account Security reports 2FA
+as unavailable and setup/login verification fail closed. Set this environment
+variable to a stable, randomly generated 32-byte key encoded as Base64 or 64
+hexadecimal characters. Generate a Base64 key locally with
+`node -e "console.log(require('node:crypto').randomBytes(32).toString('base64'))"`.
+Store the key in the backend environment or a secret manager, never in source
+control. Losing or changing the key makes existing encrypted authenticator
+secrets unreadable and requires account recovery.
 
 ### Initial administrator setup
 

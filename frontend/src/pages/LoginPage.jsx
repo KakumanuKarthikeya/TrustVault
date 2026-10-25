@@ -1,8 +1,9 @@
 import { useState } from 'react'
-import { ArrowRight, Eye, EyeOff, LockKeyhole, LoaderCircle, Mail, ShieldCheck } from 'lucide-react'
+import { ArrowRight, Eye, EyeOff, LockKeyhole, LoaderCircle, Mail, ShieldCheck, KeyRound } from 'lucide-react'
 import { Link, useNavigate } from 'react-router-dom'
 import AuthLayout from '../layouts/AuthLayout.jsx'
 import { useAuth } from '../context/useAuth.js'
+import { verifyTwoFactorLogin } from '../services/authService.js'
 
 function apiError(error) {
   const status = error.response?.status
@@ -24,7 +25,7 @@ function apiError(error) {
 }
 
 export default function LoginPage() {
-  const { login } = useAuth()
+  const { login, completeTwoFactorLogin } = useAuth()
   const navigate = useNavigate()
   const [email, setEmail] = useState(() => localStorage.getItem('trustvault_remembered_email') || '')
   const [password, setPassword] = useState('')
@@ -33,6 +34,8 @@ export default function LoginPage() {
   const [message, setMessage] = useState('')
   const [error, setError] = useState('')
   const [submitting, setSubmitting] = useState(false)
+  const [challengeToken, setChallengeToken] = useState('')
+  const [twoFactorCode, setTwoFactorCode] = useState('')
 
   async function handleSubmit(event) {
     event.preventDefault()
@@ -41,38 +44,71 @@ export default function LoginPage() {
     setMessage('')
     try {
       const normalizedEmail = email.trim()
-      await login({ email: normalizedEmail, password })
+      if (challengeToken) {
+        const { data } = await verifyTwoFactorLogin({
+          challengeToken,
+          code: twoFactorCode,
+        })
+        completeTwoFactorLogin(data)
+      } else {
+        const result = await login({ email: normalizedEmail, password })
+        if (result?.requiresTwoFactor) {
+          setChallengeToken(result.challengeToken)
+          setPassword('')
+          setMessage('Enter the 6-digit code from your authenticator app.')
+          setSubmitting(false)
+          return
+        }
+      }
       if (rememberMe) localStorage.setItem('trustvault_remembered_email', normalizedEmail)
       else localStorage.removeItem('trustvault_remembered_email')
       navigate('/', { replace: true })
     } catch (requestError) {
-      setError(apiError(requestError))
+      setError(
+        challengeToken
+          ? requestError.response?.data?.error || 'The authenticator code could not be verified.'
+          : apiError(requestError),
+      )
     } finally {
       setSubmitting(false)
     }
+  }
+
+  function returnToCredentials() {
+    setChallengeToken('')
+    setTwoFactorCode('')
+    setMessage('')
+    setError('')
   }
 
   return (
     <AuthLayout variant="login">
       <div className="auth-card">
         <div className="auth-card-icon"><LockKeyhole size={19} /></div>
-        <h2>Welcome back</h2>
-        <p className="auth-intro">Sign in to access your secure workspace.</p>
+        <h2>{challengeToken ? 'Verify it’s you' : 'Welcome back'}</h2>
+        <p className="auth-intro">{challengeToken ? 'Enter the current code from your authenticator app to continue.' : 'Sign in to access your secure workspace.'}</p>
         <form className="auth-form" onSubmit={handleSubmit} aria-busy={submitting}>
+          {challengeToken ? (
+            <label>Authenticator code
+              <span className="input-with-icon"><KeyRound size={16} /><input type="text" inputMode="numeric" autoComplete="one-time-code" pattern="[0-9]{6}" maxLength={6} required autoFocus value={twoFactorCode} onChange={(event) => setTwoFactorCode(event.target.value.replace(/\D/g, '').slice(0, 6))} /></span>
+            </label>
+          ) : <>
           <label>Email address
             <span className="input-with-icon"><Mail size={16} /><input type="email" autoComplete="email" required maxLength="254" placeholder="you@company.com" value={email} onChange={(event) => setEmail(event.target.value)} /></span>
           </label>
           <label>Password
             <span className="input-with-icon"><LockKeyhole size={16} /><input type={showPassword ? 'text' : 'password'} autoComplete="current-password" required maxLength="72" placeholder="Enter your password" value={password} onChange={(event) => setPassword(event.target.value)} /><button className="password-toggle" type="button" aria-label={showPassword ? 'Hide password' : 'Show password'} onClick={() => setShowPassword((value) => !value)}>{showPassword ? <EyeOff size={16} /> : <Eye size={16} />}</button></span>
           </label>
-          <div className="auth-form-options">
+          </>}
+          {!challengeToken && <div className="auth-form-options">
             <label className="checkbox-label"><input type="checkbox" checked={rememberMe} onChange={(event) => setRememberMe(event.target.checked)} />Remember me</label>
             <Link className="text-link button-link" to="/forgot-password">Forgot password?</Link>
-          </div>
+          </div>}
           {message && <p className="form-notice" role="status">{message}</p>}
           {error && <p className="form-error" role="alert">{error}</p>}
-          <button className="button button-primary auth-submit" disabled={submitting}>{submitting ? <>Signing in… <LoaderCircle className="auth-loading-icon" size={17} /></> : <>Sign in <ArrowRight size={17} /></>}</button>
+          <button className="button button-primary auth-submit" disabled={submitting}>{submitting ? <>Verifying… <LoaderCircle className="auth-loading-icon" size={17} /></> : <>{challengeToken ? 'Verify and continue' : 'Sign in'} <ArrowRight size={17} /></>}</button>
         </form>
+        {challengeToken && <button className="text-link button-link" type="button" onClick={returnToCredentials}>Back to sign in</button>}
         <div className="auth-security-note"><span aria-hidden="true" /><ShieldCheck size={16} /><span>Your documents remain protected by access controls.</span></div>
         <p className="auth-switch">New to TrustVault? <Link to="/register">Create account</Link></p>
         {rememberMe && <span className="remember-note">Your email is remembered on this device. Access tokens still expire after 15 minutes.</span>}

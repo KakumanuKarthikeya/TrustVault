@@ -36,7 +36,7 @@ function PublicOnly({ children }) {
   return user ? <Navigate to="/" replace /> : children
 }
 
-function AdminOnly({ children }) {
+export function AdminOnly({ children }) {
   const { user, loading } = useAuth()
   if (loading) return <LoadingState label="Checking administrator access…" />
   if (!user) return <Navigate to="/login" replace />

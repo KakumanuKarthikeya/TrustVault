@@ -51,6 +51,50 @@ Authenticates a user and returns a short-lived access token.
 Unknown users, wrong passwords, and disabled accounts receive the same
 credential error. Password hashes are never returned.
 
+### `POST /api/auth/change-password`
+
+Changes the current authenticated account's password.
+
+- **Authentication:** Required.
+- **Rate limit:** 10 requests per IP in 15 minutes.
+- **Input JSON:** `{"currentPassword":"CurrentPassword","newPassword":"AtLeast12Characters"}`.
+- **Success (`200`):** `{"message":"Password changed successfully","token":"<replacement-access-token>"}`.
+- **Incorrect current password (`401`):** `{"error":"Current password is incorrect"}`.
+- **Invalid input or reused password (`400`):** A safe validation error.
+- **Concurrent password change (`409`):** The caller must sign in again.
+
+The new password must be at least 12 characters and at most 72 UTF-8 bytes.
+The endpoint verifies and hashes passwords with bcrypt, increments the
+password version to invalidate other sessions, and returns a replacement
+token for the current session.
+
+### Two-factor authentication
+
+Configure `TOTP_ENCRYPTION_KEY` as a stable 32-byte Base64 or 64-character
+hexadecimal key. TOTP secrets are encrypted with AES-256-GCM before storage.
+The encryption key is never returned by the API.
+
+- `GET /api/auth/2fa/status` (authenticated) returns availability, enabled,
+  and pending-setup flags only.
+- `POST /api/auth/2fa/setup` (authenticated) creates a 10-minute pending
+  enrollment and returns an `otpauth` URI for the setup QR. The URI contains
+  the secret and is returned only during enrollment.
+- `POST /api/auth/2fa/verify-setup` (authenticated) accepts
+  `{"code":"123456"}` and enables 2FA only after verification.
+- `POST /api/auth/2fa/disable` (authenticated) accepts the current password
+  and an unused TOTP code; it invalidates existing sessions and returns a
+  replacement access token.
+- When 2FA is enabled, `POST /api/auth/login` returns a five-minute
+  `challengeToken` without an access token. `POST /api/auth/login/verify-2fa`
+  accepts `{"challengeToken":"...","code":"123456"}` and issues the normal
+  access token only after successful verification.
+
+TOTP verification uses a 30-second period, allows one adjacent period for
+clock drift, and rejects previously used time steps. Verification endpoints
+are rate-limited to five attempts per IP per 15 minutes; setup also expires
+after 10 minutes and is cleared after five invalid codes. Login challenges
+are one-time, expire after five minutes, and permit up to five attempts.
+
 ### `POST /api/auth/forgot-password`
 
 Requests a password-reset email for an active account.

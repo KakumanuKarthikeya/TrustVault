@@ -3,6 +3,7 @@ const { connectDatabase } = require('../config/database');
 const Permission = require('../models/Permission');
 const PasswordResetToken = require('../models/PasswordResetToken');
 const TokenRevocation = require('../models/TokenRevocation');
+const TwoFactorLoginChallenge = require('../models/TwoFactorLoginChallenge');
 
 describe('connectDatabase', () => {
   afterEach(() => {
@@ -15,7 +16,7 @@ describe('connectDatabase', () => {
     );
   });
 
-  it('ensures permission, password-reset, and token-revocation indexes', async () => {
+  it('ensures permission, password-reset, token-revocation, and two-factor challenge indexes', async () => {
     jest.spyOn(mongoose, 'connect').mockResolvedValue(mongoose);
     const disconnect = jest
       .spyOn(mongoose, 'disconnect')
@@ -29,6 +30,9 @@ describe('connectDatabase', () => {
     const passwordResetIndexes = jest
       .spyOn(PasswordResetToken, 'createIndexes')
       .mockResolvedValue([]);
+    const twoFactorChallengeIndexes = jest
+      .spyOn(TwoFactorLoginChallenge, 'createIndexes')
+      .mockResolvedValue([]);
 
     await connectDatabase('mongodb://localhost/trustvault-test');
 
@@ -39,6 +43,7 @@ describe('connectDatabase', () => {
     expect(permissionIndexes).toHaveBeenCalledTimes(1);
     expect(passwordResetIndexes).toHaveBeenCalledTimes(1);
     expect(revocationIndexes).toHaveBeenCalledTimes(1);
+    expect(twoFactorChallengeIndexes).toHaveBeenCalledTimes(1);
     expect(disconnect).not.toHaveBeenCalled();
   });
 
@@ -52,6 +57,7 @@ describe('connectDatabase', () => {
     jest
       .spyOn(TokenRevocation, 'createIndexes')
       .mockRejectedValue(new Error('index creation failed'));
+    jest.spyOn(TwoFactorLoginChallenge, 'createIndexes').mockResolvedValue([]);
 
     await expect(
       connectDatabase('mongodb://localhost/trustvault-test'),
@@ -75,6 +81,9 @@ describe('connectDatabase', () => {
       .spyOn(PasswordResetToken, 'createIndexes')
       .mockResolvedValue([]);
     jest.spyOn(TokenRevocation, 'createIndexes').mockResolvedValue([]);
+    jest
+      .spyOn(TwoFactorLoginChallenge, 'createIndexes')
+      .mockResolvedValue([]);
 
     await expect(
       connectDatabase('mongodb://localhost/trustvault-test'),

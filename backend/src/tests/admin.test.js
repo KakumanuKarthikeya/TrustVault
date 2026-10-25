@@ -2,6 +2,7 @@ jest.mock('../models/User', () => ({
   countDocuments: jest.fn(),
   find: jest.fn(),
   findById: jest.fn(),
+  findOne: jest.fn(),
 }));
 
 jest.mock('../models/Document', () => ({
@@ -19,6 +20,7 @@ jest.mock('../models/TokenRevocation', () => ({
 }));
 
 const crypto = require('node:crypto');
+const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
 const mongoose = require('mongoose');
 const request = require('supertest');
@@ -81,6 +83,11 @@ beforeEach(() => {
     [TARGET_ID, makeUser(TARGET_ID, 'owner')],
   ]);
   User.findById.mockImplementation(async (id) => users.get(String(id)) || null);
+  User.findOne.mockImplementation((filter) => ({
+    select: jest.fn().mockResolvedValue(
+      [...users.values()].find((user) => user.email === filter.email) || null,
+    ),
+  }));
   User.countDocuments.mockResolvedValue(3);
   Document.countDocuments.mockResolvedValue(7);
   AuditLog.countDocuments.mockResolvedValue(12);
@@ -90,6 +97,33 @@ beforeEach(() => {
 });
 
 describe('Admin API', () => {
+  it('allows an active administrator to log in and retrieve backend dashboard statistics', async () => {
+    const password = crypto.randomBytes(24).toString('base64url');
+    const passwordHash = await bcrypt.hash(password, 4);
+    const admin = users.get(ADMIN_ID);
+    admin.passwordHash = passwordHash;
+
+    const login = await request(app)
+      .post('/api/auth/login')
+      .send({ email: admin.email, password });
+
+    expect(login.status).toBe(200);
+    expect(login.body.user.role).toBe('admin');
+    expect(login.body.user.passwordHash).toBeUndefined();
+
+    const dashboard = await request(app)
+      .get('/api/admin/dashboard')
+      .set('Authorization', `Bearer ${login.body.token}`);
+
+    expect(dashboard.status).toBe(200);
+    expect(dashboard.body.summary).toEqual({
+      totalUsers: 3,
+      activeUsers: 3,
+      totalDocuments: 7,
+      recentAuditEvents: 12,
+    });
+  });
+
   it('returns real summary counts and only recent audit records to an active admin', async () => {
     const auditEvents = [{ action: 'document.upload', outcome: 'success' }];
     const query = queryFor(auditEvents);

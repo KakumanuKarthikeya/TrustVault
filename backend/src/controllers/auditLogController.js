@@ -15,6 +15,9 @@ const AUDIT_ACTIONS = new Set([
   'auth.logout',
   'auth.password_reset.requested',
   'auth.password_reset.completed',
+  'auth.password.changed',
+  'auth.2fa.enabled',
+  'auth.2fa.disabled',
   'auth.admin.bootstrap',
   'auth.user.status',
 ]);

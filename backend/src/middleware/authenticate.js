@@ -38,6 +38,7 @@ async function authenticate(request, response, next) {
   if (
     !payload ||
     typeof payload === 'string' ||
+    payload.purpose !== undefined ||
     typeof payload.sub !== 'string' ||
     !mongoose.isValidObjectId(payload.sub)
   ) {

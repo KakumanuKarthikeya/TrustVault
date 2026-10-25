@@ -26,6 +26,36 @@ const userSchema = new mongoose.Schema(
       default: 0,
       min: 0,
     },
+    twoFactorEnabled: {
+      type: Boolean,
+      default: false,
+    },
+    twoFactorSecretEncrypted: {
+      type: String,
+      select: false,
+    },
+    twoFactorPendingSecretEncrypted: {
+      type: String,
+      select: false,
+    },
+    twoFactorPendingExpiresAt: {
+      type: Date,
+      select: false,
+    },
+    twoFactorSetupAttempts: {
+      type: Number,
+      default: 0,
+      select: false,
+    },
+    twoFactorLastUsedStep: {
+      type: Number,
+      default: -1,
+      select: false,
+    },
+    twoFactorLockedUntil: {
+      type: Date,
+      select: false,
+    },
     role: {
       type: String,
       enum: ['admin', 'owner', 'viewer'],

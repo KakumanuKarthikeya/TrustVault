@@ -5,9 +5,10 @@
   "main": "index.js",
   "scripts": {
     "start": "node src/server.js",
-    "dev": "nodemon src/server.js",
+    "dev": "nodemon --watch src --watch .env src/server.js",
     "promote-admin": "node scripts/promote-admin.js",
-    "test": "jest --runInBand"
+    "test": "jest --runInBand --testPathIgnorePatterns=src/integration-tests",
+    "test:integration": "node scripts/run-stage4-integration.js"
   },
   "keywords": [],
   "author": "",
@@ -23,6 +24,7 @@
     "jsonwebtoken": "^9.0.3",
     "mongoose": "^9.11.2",
     "multer": "^2.4.0",
+    "otplib": "^13.5.0",
     "resend": "^6.34.1",
     "zod": "^4.6.7"
   },

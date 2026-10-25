@@ -336,6 +336,22 @@ button.page-number { cursor: pointer; }
 .security-row strong { color: #34445c; font-size: 11px; }
 .security-row small { color: #8794a7; font-size: 9px; }
 .security-row .button { min-height: 33px; font-size: 10px; }
+.settings-password-form { display: flex; flex-direction: column; gap: 10px; padding: 14px 0 16px 44px; border-bottom: 1px solid #edf0f5; }
+.settings-password-form label { display: flex; flex-direction: column; gap: 5px; color: #43536a; font-size: 10px; font-weight: 600; }
+.settings-password-form input { width: 100%; min-height: 38px; padding: 9px 10px; color: #384963; background: #fff; border: 1px solid #dfe5ed; border-radius: 6px; outline: 0; font-size: 11px; font-weight: 400; }
+.settings-password-form input:focus { border-color: #8eaff9; box-shadow: 0 0 0 3px rgb(40 100 237 / 8%); }
+.settings-password-form .button { align-self: flex-start; min-height: 35px; font-size: 10px; }
+.settings-password-hint { color: #8794a7; font-size: 9px; }
+.two-factor-settings { border-bottom: 1px solid #edf0f5; }
+.two-factor-settings .security-row { border-bottom: 0; }
+.two-factor-form { display: flex; flex-direction: column; align-items: flex-start; gap: 10px; padding: 12px 0 16px 44px; }
+.two-factor-form p { margin: 0; color: #77859a; font-size: 10px; line-height: 1.55; }
+.two-factor-form label { width: min(100%, 360px); display: flex; flex-direction: column; gap: 5px; color: #43536a; font-size: 10px; font-weight: 600; }
+.two-factor-form input { width: 100%; min-height: 38px; padding: 9px 10px; color: #384963; background: #fff; border: 1px solid #dfe5ed; border-radius: 6px; outline: 0; font-size: 11px; font-weight: 400; }
+.two-factor-form input:focus { border-color: #8eaff9; box-shadow: 0 0 0 3px rgb(40 100 237 / 8%); }
+.two-factor-form .button { min-height: 35px; font-size: 10px; }
+.two-factor-qr { width: 220px; max-width: 100%; height: auto; padding: 8px; background: #fff; border: 1px solid #e5eaf2; border-radius: 8px; }
+.two-factor-feedback { margin: 0 0 12px 44px; }
 .settings-actions { display: flex; justify-content: flex-end; gap: 8px; }
 .signout-control { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; }
 .signout-control .form-error { max-width: 210px; font-size: 9px; }
@@ -993,4 +1009,198 @@ button.page-number { cursor: pointer; }
   .auth-layout-login .auth-submit,
   .auth-layout-login .input-with-icon { transition: none; }
   .auth-layout-login .auth-loading-icon { animation-duration: 1.5s; }
+}
+
+/* Subtle motion across authenticated and public application surfaces */
+.app-content > .page {
+  animation: page-enter .28s cubic-bezier(.2, .7, .25, 1) both;
+}
+
+.auth-layout:not(.auth-layout-login) .auth-card {
+  animation: card-enter .36s cubic-bezier(.2, .7, .25, 1) both;
+}
+
+.settings-panel,
+.settings-password-form,
+.two-factor-form {
+  animation: content-enter .24s ease-out both;
+}
+
+.stat-card,
+.dashboard-stat-card,
+.dashboard-quick-links > a,
+.panel,
+.document-grid-card {
+  transition:
+    transform .2s cubic-bezier(.2, .7, .25, 1),
+    box-shadow .2s ease,
+    border-color .2s ease;
+}
+
+.button,
+.icon-button,
+.settings-nav button,
+.nav-link,
+.text-link,
+.panel-footer-link,
+.action-menu button {
+  transition:
+    color .16s ease,
+    background-color .16s ease,
+    border-color .16s ease,
+    box-shadow .16s ease,
+    transform .16s ease;
+}
+
+.button:active:not(:disabled),
+.icon-button:active:not(:disabled) {
+  transform: translateY(1px) scale(.985);
+}
+
+.nav-link {
+  transform: translateX(0);
+}
+
+.nav-link:hover {
+  transform: translateX(2px);
+}
+
+.notice-popover,
+.form-error,
+.form-notice,
+.sidebar-error,
+.inline-action-error {
+  animation: notice-enter .2s ease-out both;
+}
+
+.drawer-scrim {
+  animation: scrim-enter .2s ease-out both;
+  backdrop-filter: blur(2px);
+}
+
+.dialog-backdrop {
+  animation: scrim-enter .2s ease-out both;
+  backdrop-filter: blur(3px);
+}
+
+.confirm-dialog {
+  animation: dialog-enter .24s cubic-bezier(.2, .75, .25, 1) both;
+}
+
+.state-view[role='status'] .spin {
+  transform-origin: center;
+  animation: spin 1.1s linear infinite;
+}
+
+.upload-progress > span {
+  transition: width .24s ease-out;
+}
+
+@keyframes page-enter {
+  from { opacity: 0; transform: translateY(5px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes card-enter {
+  from { opacity: 0; transform: translateY(8px) scale(.99); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+@keyframes content-enter {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes notice-enter {
+  from { opacity: 0; transform: translateY(-3px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes scrim-enter {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes dialog-enter {
+  from { opacity: 0; transform: translateY(7px) scale(.985); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .stat-card:hover,
+  .dashboard-stat-card:hover,
+  .document-grid-card:hover {
+    transform: translateY(-3px);
+    border-color: #d4deeb;
+    box-shadow: 0 8px 20px rgb(16 26 43 / 7%), 0 2px 5px rgb(16 26 43 / 3%);
+  }
+
+  .dashboard-quick-links > a:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 5px 13px rgb(16 26 43 / 6%);
+  }
+
+  .panel:hover {
+    box-shadow: 0 4px 13px rgb(16 26 43 / 5%), var(--shadow);
+  }
+}
+
+@media (max-width: 680px) {
+  .app-content > .page {
+    animation-duration: .22s;
+  }
+
+  .drawer-scrim {
+    backdrop-filter: none;
+  }
+
+  .sidebar {
+    transition: transform .24s cubic-bezier(.2, .7, .25, 1);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .app-content > .page,
+  .auth-layout:not(.auth-layout-login) .auth-card,
+  .settings-panel,
+  .settings-password-form,
+  .two-factor-form,
+  .notice-popover,
+  .form-error,
+  .form-notice,
+  .sidebar-error,
+  .inline-action-error,
+  .drawer-scrim,
+  .dialog-backdrop,
+  .confirm-dialog,
+  .state-view[role='status'] .spin {
+    animation: none !important;
+  }
+
+  .stat-card,
+  .dashboard-stat-card,
+  .dashboard-quick-links > a,
+  .panel,
+  .document-grid-card,
+  .button,
+  .icon-button,
+  .settings-nav button,
+  .nav-link,
+  .text-link,
+  .panel-footer-link,
+  .action-menu button,
+  .sidebar,
+  .upload-progress > span {
+    transition: none !important;
+  }
+
+  .button:active:not(:disabled),
+  .icon-button:active:not(:disabled),
+  .nav-link:hover,
+  .stat-card:hover,
+  .dashboard-stat-card:hover,
+  .document-grid-card:hover,
+  .dashboard-quick-links > a:hover {
+    transform: none;
+  }
 }

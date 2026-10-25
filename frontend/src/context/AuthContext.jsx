@@ -47,10 +47,8 @@ export function AuthProvider({ children }) {
     return () => { active = false }
   }, [token, retryCount])
 
-  const authenticate = useCallback(async (path, credentials) => {
-    const { data } = path === '/auth/login'
-      ? await loginRequest(credentials)
-      : await registerRequest(credentials)
+  const acceptSession = useCallback((data) => {
+    if (!data.token || !data.user) throw new Error('Authentication response is incomplete')
     sessionStorage.setItem(TOKEN_KEY, data.token)
     setToken(data.token)
     setUser(data.user)
@@ -58,13 +56,28 @@ export function AuthProvider({ children }) {
     return data.user
   }, [])
 
-  const login = useCallback((credentials) => authenticate('/auth/login', credentials), [authenticate])
-  const register = useCallback((details) => authenticate('/auth/register', details), [authenticate])
+  const login = useCallback(async (credentials) => {
+    const { data } = await loginRequest(credentials)
+    if (data.requiresTwoFactor) return data
+    return acceptSession(data)
+  }, [acceptSession])
+
+  const completeTwoFactorLogin = useCallback((data) => acceptSession(data), [acceptSession])
+
+  const register = useCallback(async (details) => {
+    const { data } = await registerRequest(details)
+    return acceptSession(data)
+  }, [acceptSession])
 
   const logout = useCallback(async () => {
     await logoutRequest()
     clearSession()
   }, [clearSession])
+
+  const replaceAccessToken = useCallback((nextToken) => {
+    sessionStorage.setItem(TOKEN_KEY, nextToken)
+    setToken(nextToken)
+  }, [])
 
   const retryBootstrap = useCallback(() => {
     setBootstrapError('')
@@ -78,11 +91,13 @@ export function AuthProvider({ children }) {
     loading,
     bootstrapError,
     login,
+    completeTwoFactorLogin,
     register,
     logout,
+    replaceAccessToken,
     clearSession,
     retryBootstrap,
-  }), [token, user, loading, bootstrapError, login, register, logout, clearSession, retryBootstrap])
+  }), [token, user, loading, bootstrapError, login, completeTwoFactorLogin, register, logout, replaceAccessToken, clearSession, retryBootstrap])
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
 }

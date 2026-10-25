@@ -181,6 +181,20 @@ describe('Authentication API', () => {
     });
   });
 
+  it('rejects unimplemented second-factor fields instead of issuing a session token', async () => {
+    const response = await request(app)
+      .post('/api/auth/login')
+      .send({
+        email: registration.email,
+        password: registration.password,
+        totpCode: '123456',
+      });
+
+    expect(response.status).toBe(400);
+    expect(response.body).toEqual({ error: 'Invalid request body' });
+    expect(User.findOne).not.toHaveBeenCalled();
+  });
+
   it('logs in successfully and returns a token without a password hash', async () => {
     const passwordHash = await bcrypt.hash(registration.password, 4);
     users.push(makeUser({ ...registration, passwordHash }));

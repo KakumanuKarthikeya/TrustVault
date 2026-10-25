@@ -2,6 +2,7 @@ const mongoose = require('mongoose');
 const Permission = require('../models/Permission');
 const PasswordResetToken = require('../models/PasswordResetToken');
 const TokenRevocation = require('../models/TokenRevocation');
+const TwoFactorLoginChallenge = require('../models/TwoFactorLoginChallenge');
 
 async function connectDatabase(uri = process.env.MONGODB_URI) {
   if (typeof uri !== 'string' || uri.trim() === '') {
@@ -13,6 +14,7 @@ async function connectDatabase(uri = process.env.MONGODB_URI) {
     await Permission.createIndexes();
     await PasswordResetToken.createIndexes();
     await TokenRevocation.createIndexes();
+    await TwoFactorLoginChallenge.createIndexes();
   } catch (error) {
     try {
       await mongoose.disconnect();
